@@ -222,12 +222,27 @@ function registerMinimalItems() {
  */
 function registerFallbackTextures() {
   const need = new Set();
+  // Walking every state would build (and cache) tens of thousands of models at
+  // boot. Textures rarely vary across states, and where they do — crop age,
+  // furnace lit, copper oxidation — the state count is small, so sampling up to
+  // 24 states per block covers the variation for a fraction of the work.
+  const SAMPLE_CAP = 24;
   for (const b of blocks) {
-    for (let s = b.base; s < b.base + b.stateCount; s++) {
-      const model = b.modelFor(s);
+    const step = Math.max(1, Math.ceil(b.stateCount / SAMPLE_CAP));
+    for (let i = 0; i < b.stateCount; i += step) {
+      const model = b.modelFor(b.base + i);
       if (!model) continue;
       for (const bx of model) {
         for (const f of bx.faces) if (f?.texture) need.add(f.texture);
+      }
+    }
+    // Always include the last state — copper/crop chains often end there.
+    if (b.stateCount > 1) {
+      const model = b.modelFor(b.base + b.stateCount - 1);
+      if (model) {
+        for (const bx of model) {
+          for (const f of bx.faces) if (f?.texture) need.add(f.texture);
+        }
       }
     }
   }

@@ -591,16 +591,11 @@ function registerContainers() {
 function chestPairing(world, x, y, z, state) {
   const facing = FACING_INDEX[getProp(state, 'facing')];
   const self = blockOf(state);
-  for (const side of [1, 3]) {          // right then left of the facing
-    const dir = (facing + side) & 3;
-    const d = HORIZONTAL[dir];
+  for (const side of [1, 3]) {          // right of the facing, then left
+    const d = HORIZONTAL[(facing + side) & 3];
     const ns = world.getBlock(x + d.dx, y, z + d.dz);
     if (blockOf(ns) !== self) continue;
     if (FACING_INDEX[getProp(ns, 'facing')] !== facing) continue;
-    if (getProp(ns, 'type') !== 'single' && getProp(ns, 'type') !== undefined) {
-      // Already half of another pair.
-      if (getProp(ns, 'type') !== 'single') continue;
-    }
     return withProp(state, 'type', side === 1 ? 'left' : 'right');
   }
   return withProp(state, 'type', 'single');
@@ -621,7 +616,7 @@ function registerLights() {
   torchPair('soul_torch', 'soul_wall_torch', 10, MAP.none);
 
   for (const [name, light] of [['lantern', 15], ['soul_lantern', 10]]) {
-    def(name, mat(MAT.metal, {
+    const lantern = def(name, mat(MAT.metal, {
       properties: [PROP.hanging, PROP.waterlogged],
       defaultState: { hanging: false, waterlogged: false },
       render: RENDER.MODEL,
@@ -645,11 +640,12 @@ function registerLights() {
           ? world.getBlock(x, y + 1, z) !== 0
           : T.solid[world.getBlock(x, y - 1, z)] === 1;
       },
-    }), { noConnect: true }).stateForPlacement =
-      ((b) => (world, x, y, z, ctx) => stateOf(b, {
-        hanging: !!ctx && ctx.face === 2,
-        waterlogged: isWaterAt(world, x, y, z),
-      }))(getBlock(name));
+    }), { noConnect: true });
+    // Clicking the underside of a block hangs the lantern from it.
+    lantern.stateForPlacement = (world, x, y, z, ctx) => stateOf(lantern, {
+      hanging: !!ctx && ctx.face === 2,
+      waterlogged: isWaterAt(world, x, y, z),
+    });
   }
 
   for (const [name, light, soul] of [['campfire', 15, false], ['soul_campfire', 10, true]]) {
@@ -919,8 +915,8 @@ function registerDecorations() {
     tool: TOOL.NONE,
     sound: SOUND.GRASS,
     mapColor: MAP.fire,
-    properties: [XP.enabled],
-    defaultState: { enabled: false },
+    properties: [PROP.unstable],
+    defaultState: { unstable: false },
     flammable: 15,
     burnTime: 100,
     creativeTab: 'redstone',
