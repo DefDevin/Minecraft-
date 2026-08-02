@@ -67,7 +67,9 @@ function bakeModel(state) {
       });
     }
   }
-  baked = { faces, pass: def.pass };
+  const byDir = new Array(6).fill(null);
+  for (const f of faces) if (!byDir[f.dir]) byDir[f.dir] = f;
+  baked = { faces, byDir, pass: def.pass };
   bakedCache.set(state, baked);
   return baked;
 }
@@ -437,7 +439,7 @@ function greedyPass(mb, f) {
         if (!faceVisible(st, nb)) continue;
         const baked = bakeModel(st);
         if (!baked) continue;
-        const fd = baked.faces.find((ff) => ff.dir === f);
+        const fd = baked.byDir[f];
         if (!fd) continue;
         computeFaceLighting(x, y, z, f);
         maskState[m] = st;
@@ -497,15 +499,19 @@ function greedyPass(mb, f) {
 }
 
 const qPos = [0, 0, 0];
+const qIds = [0, 0, 0, 0];
+const qAo = [0, 0, 0, 0];
+const qLight = [0, 0, 0, 0];
 
 function emitGreedyQuad(mb, f, axis, uAxis, vAxis, slice, u, v, w, h,
   layer, aoPacked, lightPacked, tint, emissive, color) {
   mb.ensure(4, 6);
   const corners = FACE_CORNERS[f];
-  const ids = new Array(4);
-  const aos = [aoPacked & 3, (aoPacked >> 2) & 3, (aoPacked >> 4) & 3, (aoPacked >> 6) & 3];
-  const lights = [lightPacked & 255, (lightPacked >>> 8) & 255,
-    (lightPacked >>> 16) & 255, (lightPacked >>> 24) & 255];
+  const ids = qIds, aos = qAo, lights = qLight;
+  aos[0] = aoPacked & 3; aos[1] = (aoPacked >> 2) & 3;
+  aos[2] = (aoPacked >> 4) & 3; aos[3] = (aoPacked >> 6) & 3;
+  lights[0] = lightPacked & 255; lights[1] = (lightPacked >>> 8) & 255;
+  lights[2] = (lightPacked >>> 16) & 255; lights[3] = (lightPacked >>> 24) & 255;
 
   for (let c = 0; c < 4; c++) {
     const corner = corners[c];
@@ -556,7 +562,7 @@ const MODEL_CORNER_POS = new Float32Array(12);
 function emitModelFace(mb, x, y, z, fd, color) {
   mb.ensure(4, 6);
   const corners = FACE_CORNERS[fd.dir];
-  const ids = new Array(4);
+  const ids = qIds;
   for (let c = 0; c < 4; c++) {
     const k = corners[c];
     const px = x + (k[0] ? fd.x1 : fd.x0);
@@ -738,7 +744,7 @@ function fluidPass(x, y, z, state) {
     const ni = nbIndex(x + d.dx, y, z + d.dz);
     const p = pack(f, 3, nbSky[ni], nbLight[ni], tint, emissive);
     const corners = FACE_CORNERS[f];
-    const ids = new Array(4);
+    const ids = qIds;
     for (let c = 0; c < 4; c++) {
       const k = corners[c];
       const hh = k[1] === 1 ? cornerH(k[0], k[2]) : 0;
