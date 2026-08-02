@@ -10,6 +10,7 @@ import { statesUsed } from './world/blockstate.js';
 import { registerTexture, generateAll, Pixels, textureCount, hasTexture }
   from './render/texgen.js';
 import { itemsByName, defineItem, ItemStack } from './game/items.js';
+import { setBiomeColorProvider } from './render/mesher.js';
 import { Game } from './game/game.js';
 import { GAMEMODE } from './entity/player.js';
 import { Random } from './core/rng.js';
@@ -105,6 +106,19 @@ export async function start() {
     mobTextures: mobTex,
     entityRenderer: await optional('./render/entityrenderer.js', 'entity renderer'),
   };
+  // Terrain tint colours are baked per block by the mesher, so it needs a way
+  // to ask what colour a biome is.
+  if (modules.biomes?.biomeById) {
+    const table = modules.biomes.biomeById;
+    setBiomeColorProvider((biomeId) => {
+      const b = table[biomeId];
+      return b ? {
+        grass: b.grassColor ?? 0x7cbd6b,
+        foliage: b.foliageColor ?? 0x59ae30,
+        water: b.waterColor ?? 0x3f76e4,
+      } : null;
+    });
+  }
   modules.effects?.registerAllEffects?.();
   modules.enchanting?.registerAllEnchantments?.();
   modules.mobs?.registerAllMobs?.();

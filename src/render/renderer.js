@@ -392,6 +392,8 @@ export class Renderer {
         gl.vertexAttribPointer(2, 1, gl.FLOAT, false, VERTEX_BYTES, 20);
         gl.enableVertexAttribArray(3);
         gl.vertexAttribIPointer(3, 1, gl.UNSIGNED_INT, VERTEX_BYTES, 24);
+        gl.enableVertexAttribArray(4);
+        gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, VERTEX_BYTES, 28);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, slot.ibo);
         gl.bindVertexArray(null);
       }
@@ -594,9 +596,6 @@ export class Renderer {
     gl.uniform1f(P.uniforms.uFogStart, this.fogStart);
     gl.uniform1f(P.uniforms.uFogEnd, this.fogEnd);
     gl.uniform1f(P.uniforms.uFogDensity, this.fogDensity);
-    gl.uniform3fv(P.uniforms.uGrassColor, hexArray(this.grassColor));
-    gl.uniform3fv(P.uniforms.uFoliageColor, hexArray(this.foliageColor));
-    gl.uniform3fv(P.uniforms.uWaterColor, hexArray(this.waterColor));
     gl.uniform3fv(P.uniforms.uTorchColor, hexArray(this.torchColor));
     gl.uniform3fv(P.uniforms.uSkyLightColor, hexArray(this.skyLightColor));
     gl.uniform1f(P.uniforms.uAmbient, this.ambient);

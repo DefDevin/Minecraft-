@@ -6,18 +6,20 @@
 // directly. Ambient occlusion and per-vertex light are baked in, so the shader
 // only has to sample the texture array and apply fog.
 //
-// Vertex layout, 28 bytes / 7 words:
+// Vertex layout, 32 bytes / 8 words:
 //   [0..2] float  position, in blocks, relative to the section origin
 //   [3..4] float  uv, in 0..1 of the texture tile (may exceed 1 when merged)
 //   [5]    float  texture array layer
 //   [6]    uint32 packed: normal(3) ao(2) sky(4) block(4) tint(3) emissive(4)
+//   [7]    uint32 RGBA8 biome tint colour, blended per block so grass and water
+//                 fade smoothly across biome borders instead of snapping
 
 import { T, blockOf, blocksByName, RENDER, PASS, TINT } from '../world/blocks.js';
 import { layerOf } from './texgen.js';
 import { FACES } from '../core/math.js';
 import { MIN_Y, SECTION_HEIGHT, CHUNK_SIZE } from '../world/chunk.js';
 
-export const FLOATS_PER_VERTEX = 7;
+export const FLOATS_PER_VERTEX = 8;
 export const VERTEX_BYTES = FLOATS_PER_VERTEX * 4;
 
 // Packed field offsets.
@@ -73,6 +75,83 @@ function bakeModel(state) {
 /** Drop the bake cache — only needed if textures are regenerated. */
 export function clearBakeCache() { bakedCache.clear(); waterState = undefined; }
 
+// ---------------------------------------------------------------------------
+// Biome tint
+//
+// Minecraft bakes grass/foliage/water colour into the mesh per block, averaged
+// over a neighbourhood, so a forest fades into a plain instead of changing at
+// the chunk seam. The colour provider is injected by main.js once biomes.js is
+// available; without it every column gets the same default colour and the look
+// is identical to a single global tint.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_TINTS = { grass: 0x7cbd6b, foliage: 0x59ae30, water: 0x3f76e4 };
+let biomeColors = () => DEFAULT_TINTS;
+
+/** @param {(biomeId:number) => {grass:number,foliage:number,water:number}} fn */
+export function setBiomeColorProvider(fn) {
+  biomeColors = fn || (() => DEFAULT_TINTS);
+  clearTintCache();
+}
+
+const tintCaches = new WeakMap();   // chunk -> Uint32Array(256 * 3)
+
+export function clearTintCache() { /* WeakMap entries die with their chunks */ }
+
+/** Radius, in blocks, that biome colours are averaged over. */
+const TINT_BLEND = 3;
+
+function chunkTints(world, chunk) {
+  let cache = tintCaches.get(chunk);
+  if (cache) return cache;
+  cache = new Uint32Array(256 * 3);
+  const x0 = chunk.x0, z0 = chunk.z0;
+  for (let lz = 0; lz < 16; lz++) {
+    for (let lx = 0; lx < 16; lx++) {
+      let gr = 0, gg = 0, gb = 0, fr = 0, fg = 0, fb = 0, wr = 0, wg = 0, wb = 0, n = 0;
+      // A plus-shaped 5-tap: cheap, and enough to smooth the 4-block biome grid.
+      for (const [dx, dz] of TINT_TAPS) {
+        const b = world.getSurfaceBiomeAt(x0 + lx + dx, z0 + lz + dz);
+        const c = biomeColors(b) || DEFAULT_TINTS;
+        gr += (c.grass >> 16) & 255; gg += (c.grass >> 8) & 255; gb += c.grass & 255;
+        fr += (c.foliage >> 16) & 255; fg += (c.foliage >> 8) & 255; fb += c.foliage & 255;
+        wr += (c.water >> 16) & 255; wg += (c.water >> 8) & 255; wb += c.water & 255;
+        n++;
+      }
+      const i = (lz * 16 + lx) * 3;
+      cache[i] = rgba(gr / n, gg / n, gb / n);
+      cache[i + 1] = rgba(fr / n, fg / n, fb / n);
+      cache[i + 2] = rgba(wr / n, wg / n, wb / n);
+    }
+  }
+  tintCaches.set(chunk, cache);
+  return cache;
+}
+
+const TINT_TAPS = [[0, 0], [-TINT_BLEND, 0], [TINT_BLEND, 0], [0, -TINT_BLEND], [0, TINT_BLEND]];
+
+/** Pack to the little-endian RGBA8 the vertex attribute reads. */
+const rgba = (r, g, b) =>
+  ((255 << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255)) >>> 0;
+
+const WHITE = 0xffffffff;
+
+/** Blended tint colour for a block column, by TINT type. */
+function tintColorFor(world, x, z, tintType) {
+  if (tintType === TINT.NONE) return WHITE;
+  const chunk = world.getChunkAt(x, z);
+  if (!chunk) return WHITE;
+  const cache = chunkTints(world, chunk);
+  const i = (((z & 15) * 16) + (x & 15)) * 3;
+  if (tintType === TINT.GRASS) return cache[i];
+  if (tintType === TINT.FOLIAGE) return cache[i + 1];
+  if (tintType === TINT.WATER) return cache[i + 2];
+  return WHITE;
+}
+
+/** The world and section origin currently being meshed, for tint lookups. */
+let meshWorld = null, meshOx = 0, meshOz = 0;
+
 /** The water source state, resolved on first use since blocks register late. */
 let waterState;
 function getWaterState() {
@@ -121,12 +200,13 @@ class MeshBuilder {
     }
   }
 
-  vertex(x, y, z, u, v, layer, packed) {
+  vertex(x, y, z, u, v, layer, packed, color = 0xffffffff) {
     const i = this.vertexCount * FLOATS_PER_VERTEX;
     this.f32[i] = x; this.f32[i + 1] = y; this.f32[i + 2] = z;
     this.f32[i + 3] = u; this.f32[i + 4] = v;
     this.f32[i + 5] = layer;
     this.u32[i + 6] = packed;
+    this.u32[i + 7] = color;
     return this.vertexCount++;
   }
 
@@ -321,6 +401,7 @@ const maskLayer = new Int32Array(S * S);
 const maskAO = new Uint32Array(S * S);     // 4 x 2 bits
 const maskLight = new Uint32Array(S * S);  // 4 x 8 bits
 const maskTint = new Uint8Array(S * S);
+const maskColor = new Uint32Array(S * S);
 const maskEmissive = new Uint8Array(S * S);
 const maskUsed = new Uint8Array(S * S);
 
@@ -365,6 +446,7 @@ function greedyPass(mb, f) {
         maskLight[m] = cornerLight[0] | (cornerLight[1] << 8) |
           (cornerLight[2] << 16) | (cornerLight[3] << 24);
         maskTint[m] = fd.tint;
+        maskColor[m] = tintColorFor(meshWorld, meshOx + x, meshOz + z, fd.tint);
         maskEmissive[m] = fd.emissive;
         any = true;
       }
@@ -376,7 +458,7 @@ function greedyPass(mb, f) {
         const m = v * S + u;
         if (maskState[m] === 0 || maskUsed[m]) continue;
         const layer = maskLayer[m], ao = maskAO[m], light = maskLight[m];
-        const tint = maskTint[m], em = maskEmissive[m];
+        const tint = maskTint[m], em = maskEmissive[m], col = maskColor[m];
         // Uniform lighting is required for a merge to be correct.
         const uniform = (ao === (ao & 3) * 0x55) &&
           ((light & 255) === ((light >>> 8) & 255)) &&
@@ -388,7 +470,8 @@ function greedyPass(mb, f) {
             const mm = v * S + u + w;
             if (maskUsed[mm] || maskState[mm] === 0 || maskLayer[mm] !== layer ||
               maskAO[mm] !== ao || maskLight[mm] !== light ||
-              maskTint[mm] !== tint || maskEmissive[mm] !== em) break;
+              maskTint[mm] !== tint || maskEmissive[mm] !== em ||
+              maskColor[mm] !== col) break;
             w++;
           }
           outer:
@@ -397,7 +480,8 @@ function greedyPass(mb, f) {
               const mm = (v + h) * S + u + k;
               if (maskUsed[mm] || maskState[mm] === 0 || maskLayer[mm] !== layer ||
                 maskAO[mm] !== ao || maskLight[mm] !== light ||
-                maskTint[mm] !== tint || maskEmissive[mm] !== em) break outer;
+                maskTint[mm] !== tint || maskEmissive[mm] !== em ||
+                maskColor[mm] !== col) break outer;
             }
             h++;
           }
@@ -406,7 +490,7 @@ function greedyPass(mb, f) {
           for (let du = 0; du < w; du++) maskUsed[(v + dv) * S + u + du] = 1;
         }
         emitGreedyQuad(mb, f, axis, uAxis, vAxis, slice, u, v, w, h,
-          layer, ao, light, tint, em);
+          layer, ao, light, tint, em, col);
       }
     }
   }
@@ -415,7 +499,7 @@ function greedyPass(mb, f) {
 const qPos = [0, 0, 0];
 
 function emitGreedyQuad(mb, f, axis, uAxis, vAxis, slice, u, v, w, h,
-  layer, aoPacked, lightPacked, tint, emissive) {
+  layer, aoPacked, lightPacked, tint, emissive, color) {
   mb.ensure(4, 6);
   const corners = FACE_CORNERS[f];
   const ids = new Array(4);
@@ -434,7 +518,7 @@ function emitGreedyQuad(mb, f, axis, uAxis, vAxis, slice, u, v, w, h,
     const sv = h - corner[vAxis] * h;
     const light = lights[c];
     ids[c] = mb.vertex(qPos[0], qPos[1], qPos[2], su, sv, layer,
-      pack(f, aos[c], (light >> 4) & 15, light & 15, tint, emissive));
+      pack(f, aos[c], (light >> 4) & 15, light & 15, tint, emissive), color);
   }
   // Flip the split when the AO gradient runs across the "wrong" diagonal.
   const flip = aos[0] + aos[2] > aos[1] + aos[3];
@@ -463,13 +547,13 @@ function modelPass(x, y, z, state) {
       if (!faceVisible(state, nb)) continue;
     }
     computeFaceLighting(x, y, z, fd.dir);
-    emitModelFace(mb, x, y, z, fd);
+    emitModelFace(mb, x, y, z, fd, tintColorFor(meshWorld, meshOx + x, meshOz + z, fd.tint));
   }
 }
 
 const MODEL_CORNER_POS = new Float32Array(12);
 
-function emitModelFace(mb, x, y, z, fd) {
+function emitModelFace(mb, x, y, z, fd, color) {
   mb.ensure(4, 6);
   const corners = FACE_CORNERS[fd.dir];
   const ids = new Array(4);
@@ -482,7 +566,8 @@ function emitModelFace(mb, x, y, z, fd) {
     const uv = faceUV(fd, k, c);
     const light = cornerLight[c];
     ids[c] = mb.vertex(px, py, pz, uv[0], uv[1], fd.layer,
-      pack(fd.dir, cornerAO[c], (light >> 4) & 15, light & 15, fd.tint, fd.emissive));
+      pack(fd.dir, cornerAO[c], (light >> 4) & 15, light & 15, fd.tint, fd.emissive),
+      color);
   }
   const flip = cornerAO[0] + cornerAO[2] > cornerAO[1] + cornerAO[3];
   mb.quad(ids[0], ids[1], ids[2], ids[3], flip);
@@ -521,6 +606,7 @@ function emitCross(mb, x, y, z, state, baked) {
   const sky = Math.max(nbSky[i], nbSky[above]);
   const blk = Math.max(nbLight[i], nbLight[above]);
   const packed = pack(3, 3, sky, blk, fd.tint, fd.emissive);
+  const color = tintColorFor(meshWorld, meshOx + x, meshOz + z, fd.tint);
   // A small deterministic offset breaks the grid look of grass fields.
   const h = (x * 3129871 + z * 116129781 + y * 7919) | 0;
   const ox = (((h >> 4) & 15) / 15 - 0.5) * 0.35;
@@ -536,16 +622,16 @@ function emitCross(mb, x, y, z, state, baked) {
     const bz = 1 - inset;
     const x0 = x + ax + ox, z0 = z + az + oz;
     const x1 = x + bx + ox, z1 = z + bz + oz;
-    const a = mb.vertex(x0, y + fd.y0, z0, fd.u0, fd.v1, fd.layer, packed);
-    const b = mb.vertex(x1, y + fd.y0, z1, fd.u1, fd.v1, fd.layer, packed);
-    const c = mb.vertex(x1, y1, z1, fd.u1, fd.v0, fd.layer, packed);
-    const dd = mb.vertex(x0, y1, z0, fd.u0, fd.v0, fd.layer, packed);
+    const a = mb.vertex(x0, y + fd.y0, z0, fd.u0, fd.v1, fd.layer, packed, color);
+    const b = mb.vertex(x1, y + fd.y0, z1, fd.u1, fd.v1, fd.layer, packed, color);
+    const c = mb.vertex(x1, y1, z1, fd.u1, fd.v0, fd.layer, packed, color);
+    const dd = mb.vertex(x0, y1, z0, fd.u0, fd.v0, fd.layer, packed, color);
     mb.quad(a, b, c, dd, false);
     // Back face, so plants are visible from both sides.
-    const a2 = mb.vertex(x1, y + fd.y0, z1, fd.u0, fd.v1, fd.layer, packed);
-    const b2 = mb.vertex(x0, y + fd.y0, z0, fd.u1, fd.v1, fd.layer, packed);
-    const c2 = mb.vertex(x0, y1, z0, fd.u1, fd.v0, fd.layer, packed);
-    const d2 = mb.vertex(x1, y1, z1, fd.u0, fd.v0, fd.layer, packed);
+    const a2 = mb.vertex(x1, y + fd.y0, z1, fd.u0, fd.v1, fd.layer, packed, color);
+    const b2 = mb.vertex(x0, y + fd.y0, z0, fd.u1, fd.v1, fd.layer, packed, color);
+    const c2 = mb.vertex(x0, y1, z0, fd.u1, fd.v0, fd.layer, packed, color);
+    const d2 = mb.vertex(x1, y1, z1, fd.u0, fd.v0, fd.layer, packed, color);
     mb.quad(a2, b2, c2, d2, false);
   }
 }
@@ -610,20 +696,21 @@ function fluidPass(x, y, z, state) {
   const i = nbIndex(x, y, z);
   const sky = nbSky[i], blk = nbLight[i];
   const packed = pack(3, 3, sky, blk, tint, emissive);
+  const color = tintColorFor(meshWorld, meshOx + x, meshOz + z, tint);
 
   // Top surface
   if (!sameAbove && fluidFaceVisible(fluid, above)) {
     mb.ensure(4, 6);
-    const a = mb.vertex(x, y + h01, z + 1, 0, 1, topFace.layer, packed);
-    const b = mb.vertex(x + 1, y + h11, z + 1, 1, 1, topFace.layer, packed);
-    const c = mb.vertex(x + 1, y + h10, z, 1, 0, topFace.layer, packed);
-    const d = mb.vertex(x, y + h00, z, 0, 0, topFace.layer, packed);
+    const a = mb.vertex(x, y + h01, z + 1, 0, 1, topFace.layer, packed, color);
+    const b = mb.vertex(x + 1, y + h11, z + 1, 1, 1, topFace.layer, packed, color);
+    const c = mb.vertex(x + 1, y + h10, z, 1, 0, topFace.layer, packed, color);
+    const d = mb.vertex(x, y + h00, z, 0, 0, topFace.layer, packed, color);
     mb.quad(a, b, c, d, false);
     // Underside, so the surface is visible from below the waterline.
-    const a2 = mb.vertex(x, y + h00, z, 0, 0, topFace.layer, packed);
-    const b2 = mb.vertex(x + 1, y + h10, z, 1, 0, topFace.layer, packed);
-    const c2 = mb.vertex(x + 1, y + h11, z + 1, 1, 1, topFace.layer, packed);
-    const d2 = mb.vertex(x, y + h01, z + 1, 0, 1, topFace.layer, packed);
+    const a2 = mb.vertex(x, y + h00, z, 0, 0, topFace.layer, packed, color);
+    const b2 = mb.vertex(x + 1, y + h10, z, 1, 0, topFace.layer, packed, color);
+    const c2 = mb.vertex(x + 1, y + h11, z + 1, 1, 1, topFace.layer, packed, color);
+    const d2 = mb.vertex(x, y + h01, z + 1, 0, 1, topFace.layer, packed, color);
     mb.quad(a2, b2, c2, d2, false);
   }
 
@@ -632,10 +719,10 @@ function fluidPass(x, y, z, state) {
   if (fluidFaceVisible(fluid, below)) {
     mb.ensure(4, 6);
     const p = pack(2, 3, nbSky[nbIndex(x, y - 1, z)], nbLight[nbIndex(x, y - 1, z)], tint, emissive);
-    const a = mb.vertex(x, y, z, 0, 0, topFace.layer, p);
-    const b = mb.vertex(x + 1, y, z, 1, 0, topFace.layer, p);
-    const c = mb.vertex(x + 1, y, z + 1, 1, 1, topFace.layer, p);
-    const d = mb.vertex(x, y, z + 1, 0, 1, topFace.layer, p);
+    const a = mb.vertex(x, y, z, 0, 0, topFace.layer, p, color);
+    const b = mb.vertex(x + 1, y, z, 1, 0, topFace.layer, p, color);
+    const c = mb.vertex(x + 1, y, z + 1, 1, 1, topFace.layer, p, color);
+    const d = mb.vertex(x, y, z + 1, 0, 1, topFace.layer, p, color);
     mb.quad(a, b, c, d, false);
   }
 
@@ -660,7 +747,7 @@ function fluidPass(x, y, z, state) {
       const v = k[1] === 1
         ? sideFace.v0 + (1 - hh) * (sideFace.v1 - sideFace.v0)
         : sideFace.v1;
-      ids[c] = mb.vertex(x + k[0], y + hh, z + k[2], uv[0], v, sideFace.layer, p);
+      ids[c] = mb.vertex(x + k[0], y + hh, z + k[2], uv[0], v, sideFace.layer, p, color);
     }
     mb.quad(ids[0], ids[1], ids[2], ids[3], false);
   }
@@ -683,6 +770,7 @@ export function meshSection(world, chunk, sy) {
     return null;
   }
 
+  meshWorld = world; meshOx = ox; meshOz = oz;
   fillNeighbourhood(world, ox, oy, oz);
   for (const b of builders) b.reset();
 

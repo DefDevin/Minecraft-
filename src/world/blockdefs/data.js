@@ -38,6 +38,7 @@ export const XP = {
   shrieking: flag('shrieking'),
   canSummon: flag('can_summon'),
   cracked: flag('cracked'),         // turtle egg
+  eye: flag('eye'),                 // end portal frame
   bellAttach: new Property('attachment',
     ['floor', 'ceiling', 'single_wall', 'double_wall']),
   slot0: flag('slot_0_occupied'),

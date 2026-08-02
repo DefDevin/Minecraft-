@@ -8,6 +8,7 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 layout(location = 2) in float aLayer;
 layout(location = 3) in uint aPacked;
+layout(location = 4) in vec4 aTintColor;
 
 uniform mat4 uViewProj;
 uniform vec3 uChunkOrigin;     // section origin in world space
@@ -23,6 +24,7 @@ out float vAO;
 out vec2 vLight;               // (sky, block) in 0..1
 flat out uint vTint;
 flat out float vEmissive;
+out vec3 vTintColor;
 
 const vec3 NORMALS[6] = vec3[6](
   vec3(-1.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0),
@@ -54,6 +56,7 @@ void main() {
   vAO = float(ao) / 3.0;
   vLight = vec2(float(sky), float(blk)) / 15.0;
   vTint = tint;
+  vTintColor = aTintColor.rgb;
   vEmissive = float(emissive) / 15.0;
 
   gl_Position = uViewProj * vec4(world, 1.0);
@@ -72,6 +75,7 @@ in float vAO;
 in vec2 vLight;
 flat in uint vTint;
 flat in float vEmissive;
+in vec3 vTintColor;
 
 uniform sampler2DArray uAtlas;
 uniform vec3 uCameraPos;
@@ -80,9 +84,6 @@ uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
 uniform float uFogDensity;      // >0 switches to exponential (underwater/nether)
-uniform vec3 uGrassColor;
-uniform vec3 uFoliageColor;
-uniform vec3 uWaterColor;
 uniform vec3 uTorchColor;
 uniform vec3 uSkyLightColor;
 uniform float uAlphaCutoff;
@@ -110,10 +111,9 @@ void main() {
   vec3 color = tex.rgb;
 
   // Biome tinting. The texture is painted greyscale-friendly so a straight
-  // multiply lands on the right hue.
-  if (vTint == 1u) color *= uGrassColor;
-  else if (vTint == 2u) color *= uFoliageColor;
-  else if (vTint == 3u) color *= uWaterColor;
+  // multiply lands on the right hue. The colour is baked per block by the
+  // mesher and averaged over a neighbourhood, so biome borders blend.
+  if (vTint != 0u) color *= vTintColor;
 
   float skyAmount = lightCurve(vLight.x) * uSkyBrightness;
   float blockAmount = lightCurve(vLight.y);
