@@ -816,6 +816,10 @@ export class Game {
       }
     }
 
+    // The held item draws last with the depth buffer cleared, so it is never
+    // clipped by geometry the player is standing against.
+    this.entityRenderer?.renderHand(p, alpha, this.elapsed);
+
     r.endFrame();
     this.renderGui(dt);
   }

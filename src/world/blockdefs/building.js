@@ -227,7 +227,7 @@ function registerGlass() {
     thickness: 2 / 16,
   }));
 
-  def('chain', mat(MAT.metal, {
+  const chain = def('chain', mat(MAT.metal, {
     properties: [PROP.axis, PROP.waterlogged],
     defaultState: { axis: 'y', waterlogged: false },
     render: RENDER.MODEL,
@@ -242,7 +242,6 @@ function registerGlass() {
     model: (state) => boxesToModel(chainBoxes(getProp(state, 'axis')), 'chain'),
     collision: (state) => chainBoxes(getProp(state, 'axis')),
   }), { noConnect: true });
-  const chain = getBlock('chain');
   chain.stateForPlacement = (world, x, y, z, ctx) => stateOf(chain, {
     axis: ctx && ctx.face < 2 ? 'x' : ctx && ctx.face > 3 ? 'z' : 'y',
     waterlogged: isWaterAt(world, x, y, z),
@@ -346,7 +345,7 @@ function registerAmethyst() {
       if (!grow) return;
       const b = getBlock(grow);
       world.setBlock(nx, ny, nz, stateOf(b, {
-        facing: FACING6[faceToFacing6(random ? f : f)],
+        facing: FACING6[faceToFacing6(f)],
         waterlogged: td != null && td.name === 'water',
       }));
     },
@@ -385,7 +384,7 @@ function registerAmethyst() {
         : () => [],
     }), { amethystStage: stage });
     b.stateForPlacement = (world, x, y, z, ctx) => stateOf(b, {
-      facing: FACING6[faceToFacing6(FACES[ctx ? ctx.face : 2])],
+      facing: FACING6[faceToFacing6(FACES[(ctx && ctx.face != null) ? ctx.face : 3])],
       waterlogged: isWaterAt(world, x, y, z),
     });
   }
@@ -415,10 +414,18 @@ export function facing6ToFace(name) {
   }
 }
 
+/** A crystal grows out of the surface it is attached to, along `facing`. */
 function budBoxes(state, half, height) {
   const f = FACES[facing6ToFace(getProp(state, 'facing'))];
   const lo = 0.5 - half, hi = 0.5 + half;
-  if (f.dx) return [f.dx > 0 ? new AABB(1 - height, lo, lo, 1, hi, hi) : new AABB(0, lo, lo, height, hi, hi)];
-  if (f.dy) return [f.dy > 0 ? new AABB(lo, 1 - height, lo, hi, 1, hi) : new AABB(lo, 0, lo, hi, height, hi)];
-  return [f.dz > 0 ? new AABB(lo, lo, 1 - height, hi, hi, 1) : new AABB(lo, lo, 0, hi, hi, height)];
+  if (f.dx) {
+    return [f.dx > 0 ? new AABB(0, lo, lo, height, hi, hi)
+      : new AABB(1 - height, lo, lo, 1, hi, hi)];
+  }
+  if (f.dy) {
+    return [f.dy > 0 ? new AABB(lo, 0, lo, hi, height, hi)
+      : new AABB(lo, 1 - height, lo, hi, 1, hi)];
+  }
+  return [f.dz > 0 ? new AABB(lo, lo, 0, hi, hi, height)
+    : new AABB(lo, lo, 1 - height, hi, hi, 1)];
 }
