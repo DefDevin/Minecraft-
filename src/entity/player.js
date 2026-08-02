@@ -106,6 +106,7 @@ export class Player {
     // Animation
     this.walkDist = 0;
     this.prevWalkDist = 0;
+    this.nextStepDist = 0;
     this.bobbing = 0;
     this.tiltFov = 0;
 
@@ -481,6 +482,20 @@ export class Player {
     if (this.gamemode === GAMEMODE.SURVIVAL && this.onGround && d > 0.001) {
       this.addExhaustion(this.sprinting ? 0.1 * d : (this.sneaking ? 0.0 : 0.01 * d));
     }
+    // A footstep every ~2 blocks of travel, using the sound family of whatever
+    // is underfoot. Sneaking is silent, as in the real game.
+    if (this.onGround && !this.sneaking && this.walkDist > this.nextStepDist) {
+      this.nextStepDist = this.walkDist + 2.2;
+      const below = this.world.getBlock(Math.floor(this.x),
+        Math.floor(this.y - 0.2), Math.floor(this.z));
+      const def = blockOf(below);
+      if (def && below !== 0) {
+        this.world.playSound(`step.${def.sound}`, this.x, this.y, this.z, 0.28,
+          0.9 + Math.random() * 0.2);
+      }
+    } else if (!this.onGround) {
+      this.nextStepDist = this.walkDist + 0.6;
+    }
   }
 
   // -- Environment ---------------------------------------------------------
@@ -491,7 +506,7 @@ export class Player {
     this.inWater = w.isInFluid(box, 1);
     this.inLava = w.isInFluid(box, 2);
     const eyeState = w.getBlock(Math.floor(this.eyeX), Math.floor(this.eyeY), Math.floor(this.eyeZ));
-    this.underwater = T.fluid[eyeState] === 1;
+    this.underwater = T.fluid[eyeState] === 1 || T.waterlogged[eyeState] === 1;
     this.eyeInLava = T.fluid[eyeState] === 2;
 
     const feet = w.getBlock(Math.floor(this.x), Math.floor(this.y + 0.1), Math.floor(this.z));
