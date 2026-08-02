@@ -16,7 +16,10 @@ console.log(`blocks: ${blocks.length}   states: ${statesUsed()}`);
 // --- texture references -----------------------------------------------------
 const texgen = await mod('../src/render/texgen.js');
 const blockTex = await mod('../src/render/textures/blocks.js');
-if (!blockTex.__err) blockTex.registerBlockTextures?.();
+if (!blockTex.__err) {
+  try { blockTex.registerBlockTextures?.(); }
+  catch (e) { note('ERROR', `block textures threw during registration: ${e.message}`); }
+}
 const itemTex = await mod('../src/render/textures/items.js');
 
 const referenced = new Set();
@@ -45,7 +48,8 @@ if (!texgen.__err && !blockTex.__err) {
 const items = await mod('../src/game/items.js');
 const itemdefs = await mod('../src/game/itemdefs.js');
 if (!itemdefs.__err) {
-  itemdefs.registerAllItems?.();
+  try { itemdefs.registerAllItems?.(); }
+  catch (e) { note('ERROR', `itemdefs threw during registration: ${e.message}`); }
   console.log(`items: ${items.itemsByName.size}`);
   const noItem = blocks.filter((b) => b.item && !items.itemsByName.has(b.item))
     .map((b) => b.name);
@@ -57,7 +61,8 @@ if (!itemdefs.__err) {
 // --- recipes ----------------------------------------------------------------
 const recipes = await mod('../src/game/recipes.js');
 if (!recipes.__err) {
-  recipes.registerAllRecipes?.();
+  try { recipes.registerAllRecipes?.(); }
+  catch (e) { note('ERROR', `recipes threw during registration: ${e.message}`); }
   const all = recipes.allRecipes?.() ?? recipes.RECIPES ?? [];
   console.log(`recipes: ${Array.isArray(all) ? all.length : 'unknown count'}`);
 } else {

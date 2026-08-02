@@ -27,6 +27,22 @@ async function optional(path, label) {
   }
 }
 
+/**
+ * Run a content module's registration entry point. A module that throws while
+ * registering must not take the whole game down — it just means that slice of
+ * content is missing, and the engine has fallbacks for all of it.
+ */
+function register(mod, fn, label) {
+  if (!mod || typeof mod[fn] !== 'function') return false;
+  try {
+    mod[fn]();
+    return true;
+  } catch (e) {
+    console.error(`[content] ${label} failed during ${fn}():`, e);
+    return false;
+  }
+}
+
 export async function boot_() { return start(); }
 
 export async function start() {
@@ -36,9 +52,7 @@ export async function start() {
   // --- 1. Blocks --------------------------------------------------------
   boot.step('registering blocks…', 0.05);
   const blockdefs = await optional('./world/blockdefs.js', 'block definitions');
-  if (blockdefs?.registerAllBlocks) {
-    blockdefs.registerAllBlocks();
-  } else {
+  if (!register(blockdefs, 'registerAllBlocks', 'block definitions')) {
     registerMinimalBlocks();
     freezeBlocks();
   }
@@ -47,23 +61,27 @@ export async function start() {
   // --- 2. Items ---------------------------------------------------------
   boot.step('registering items…', 0.15);
   const itemdefs = await optional('./game/itemdefs.js', 'item definitions');
-  if (itemdefs?.registerAllItems) itemdefs.registerAllItems();
-  else registerMinimalItems();
+  if (!register(itemdefs, 'registerAllItems', 'item definitions')) registerMinimalItems();
+  // Any block whose item form the content module missed still needs one, or it
+  // cannot be picked up or placed.
+  registerMinimalItems();
   console.info(`[items] ${itemsByName.size} items`);
 
   const recipes = await optional('./game/recipes.js', 'recipes');
-  if (recipes?.registerAllRecipes) recipes.registerAllRecipes();
+  register(recipes, 'registerAllRecipes', 'recipes');
 
   // --- 3. Textures ------------------------------------------------------
   boot.step('painting textures…', 0.25);
   const blockTex = await optional('./render/textures/blocks.js', 'block textures');
-  blockTex?.registerBlockTextures?.();
+  register(blockTex, 'registerBlockTextures', 'block textures');
   const itemTex = await optional('./render/textures/items.js', 'item textures');
-  itemTex?.registerItemTextures?.();
+  register(itemTex, 'registerItemTextures', 'item textures');
   const guiTex = await optional('./render/textures/gui.js', 'gui textures');
-  guiTex?.registerGuiTextures?.();
+  register(guiTex, 'registerGuiTextures', 'gui textures');
   const mobTex = await optional('./render/textures/mobs.js', 'mob textures');
-  mobTex?.registerMobTextures?.();
+  register(mobTex, 'registerMobTextures', 'mob textures');
+  const partTex = await optional('./render/textures/particles.js', 'particle textures');
+  register(partTex, 'registerParticleTextures', 'particle textures');
   registerFallbackTextures();
 
   // WebGL2 guarantees only 256 array layers and desktop GPUs typically give
@@ -105,6 +123,12 @@ export async function start() {
     farming: await optional('./game/farming.js', 'farming'),
     trading: await optional('./game/trading.js', 'villager trading'),
     save: await optional('./game/save.js', 'save system'),
+    serialization: await optional('./world/serialization.js', 'chunk serialisation'),
+    gamemode: await optional('./game/gamemode.js', 'gamemode rules'),
+    entity: await optional('./entity/entity.js', 'entity base'),
+    physics: await optional('./entity/physics.js', 'entity physics'),
+    living: await optional('./entity/livingentity.js', 'living entities'),
+    fallbackScreens: await optional('./game/ui/fallbackscreens.js', 'fallback screens'),
     mobTextures: mobTex,
     entityRenderer: await optional('./render/entityrenderer.js', 'entity renderer'),
   };
@@ -121,9 +145,9 @@ export async function start() {
       } : null;
     });
   }
-  modules.effects?.registerAllEffects?.();
-  modules.enchanting?.registerAllEnchantments?.();
-  modules.mobs?.registerAllMobs?.();
+  register(modules.effects, 'registerAllEffects', 'status effects');
+  register(modules.enchanting, 'registerAllEnchantments', 'enchanting');
+  register(modules.mobs, 'registerAllMobs', 'mobs');
 
   // --- 5. Renderer ------------------------------------------------------
   boot.step('starting renderer…', 0.7);
@@ -211,11 +235,18 @@ function registerMinimalBlocks() {
     opaque: false, transparentToSelf: true });
 }
 
+/** Give every block an item form that does not already have one. */
 function registerMinimalItems() {
+  let added = 0;
   for (const b of blocks) {
     if (!b.item || itemsByName.has(b.name)) continue;
-    defineItem(b.name, { block: b.name, displayName: b.displayName });
+    if (b.render === RENDER.INVISIBLE) continue;
+    defineItem(b.name, {
+      block: b.name, displayName: b.displayName, creativeTab: b.creativeTab,
+    });
+    added++;
   }
+  return added;
 }
 
 /**
