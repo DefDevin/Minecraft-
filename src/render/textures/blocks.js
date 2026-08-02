@@ -1469,6 +1469,176 @@ function registerSoil() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Wood
+// ---------------------------------------------------------------------------
+
+/** Species that grow leaves and saplings. Nether fungi are handled separately. */
+const TREES = [
+  { name: 'oak', sapling: 'oak_sapling' },
+  { name: 'spruce', sapling: 'spruce_sapling', leaves: 'spruce' },
+  { name: 'birch', sapling: 'birch_sapling', leaves: 'birch', dashes: true },
+  { name: 'jungle', sapling: 'jungle_sapling' },
+  { name: 'acacia', sapling: 'acacia_sapling' },
+  { name: 'dark_oak', sapling: 'dark_oak_sapling' },
+  { name: 'mangrove', sapling: 'mangrove_propagule' },
+  { name: 'cherry', sapling: 'cherry_sapling', leaves: 'cherry' },
+];
+
+/** The two Nether fungi, which use stem/hyphae naming instead of log/wood. */
+const FUNGI = [{ name: 'crimson' }, { name: 'warped' }];
+
+/** A door leaf: framed planks with a panel, a window on the top half. */
+function paintDoor(px, rng, sp, half) {
+  const base = sp.planks;
+  paintPlanks(px, rng, base, { rows: 4, jitter: 0.1, grain: 0.03 });
+  // Hinge stile down the left, rail across the outer edge.
+  px.rect(0, 0, 2, S, shade(base, -0.2));
+  px.vline(1, 0, S - 1, shade(base, -0.32));
+  px.frame(0, 0, S, S, shade(base, -0.3));
+  if (half === 'top') {
+    px.hline(0, S - 1, 0, shade(base, 0.14));
+    // Window: four panes behind a muntin cross.
+    px.rect(4, 3, 9, 7, 0x2e3a44);
+    px.rect(5, 4, 7, 5, 0x6f96b0);
+    px.vline(8, 4, 8, 0x2e3a44);
+    px.hline(5, 11, 6, 0x2e3a44);
+    px.set(5, 4, 0xa8c8dc); px.set(9, 4, 0xa8c8dc);
+    px.frame(4, 3, 9, 7, shade(base, -0.38));
+    px.hline(3, 13, 12, shade(base, -0.28));
+  } else {
+    px.hline(0, S - 1, S - 1, shade(base, -0.34));
+    // Raised panel.
+    px.rect(4, 2, 9, 12, shade(base, 0.06));
+    px.bevel(4, 2, 9, 12, 0.2, 0.24);
+    px.frame(3, 1, 11, 14, shade(base, -0.28));
+    // Handle.
+    px.set(12, 7, 0x3a3a3a); px.set(12, 8, 0x6a6a6a); px.set(13, 8, 0x3a3a3a);
+  }
+}
+
+/** A trapdoor: three boards with narrow gaps you can see daylight through. */
+function paintTrapdoor(px, rng, sp) {
+  const base = sp.planks;
+  for (let band = 0; band < 3; band++) {
+    const y0 = band * 5 + (band > 0 ? 1 : 0);
+    const h = band === 1 ? 5 : 5;
+    const c = shade(base, (rng.next() - 0.5) * 0.12);
+    px.rect(0, y0, S, Math.min(h, S - y0), c);
+    for (let k = 0; k < 3; k++) {
+      const gy = y0 + rng.int(Math.min(h, S - y0));
+      const x0 = rng.int(S), len = 3 + rng.int(7);
+      for (let i = 0; i < len; i++) blendw(px, x0 + i, gy, shade(c, -0.16), 0.55);
+    }
+  }
+  // Cross battens.
+  px.rect(1, 0, 3, S, shade(base, -0.12));
+  px.rect(12, 0, 3, S, shade(base, -0.12));
+  px.frame(1, 0, 3, S, shade(base, -0.3));
+  px.frame(12, 0, 3, S, shade(base, -0.3));
+  // Iron hinges.
+  for (const y of [1, 13]) {
+    px.rect(1, y, 14, 2, 0x5a5a5a);
+    px.set(2, y, 0x8a8a8a); px.set(13, y + 1, 0x2e2e2e);
+  }
+  px.grain(rng, 0.035);
+}
+
+/** A sapling: thin trunk, a bushy crown, alpha everywhere else. */
+function paintSapling(px, rng, leafLight, leafDark, trunk = 0x6b5334) {
+  for (let y = 9; y < S; y++) {
+    px.set(7, y, trunk);
+    px.set(8, y, shade(trunk, -0.25));
+  }
+  const crown = [
+    [6, 3, 4, 1], [5, 4, 6, 1], [4, 5, 8, 2], [3, 7, 10, 2],
+    [4, 9, 8, 1], [5, 10, 6, 1],
+  ];
+  for (const [x, y, wd, ht] of crown) {
+    for (let j = 0; j < ht; j++) {
+      for (let i = 0; i < wd; i++) {
+        if (rng.chance(0.14)) continue;
+        px.set(x + i, y + j, rng.chance(0.4) ? leafDark : leafLight);
+      }
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = 3 + rng.int(10), y = 3 + rng.int(8);
+    if (px.getAlpha(x, y)) px.blend(x, y, shade(leafDark, -0.3), 0.6);
+  }
+}
+
+function registerWood() {
+  for (const t of TREES) {
+    const sp = P.wood[t.name];
+    tex(`${t.name}_planks`, (px, rng) => paintPlanks(px, rng, sp.planks));
+    tex(`${t.name}_log`, (px, rng) => paintBark(px, rng, sp, { dashes: t.dashes }));
+    tex(`${t.name}_log_top`, (px, rng) => paintLogTop(px, rng, sp));
+    tex(`stripped_${t.name}_log`, (px, rng) => paintStripped(px, rng, sp.stripped));
+    tex(`stripped_${t.name}_log_top`, (px, rng) =>
+      paintLogTop(px, rng, { ...sp, bark: sp.stripped, barkDark: shade(sp.stripped, -0.2) },
+        { core: sp.stripped }));
+
+    // Leaves. Species the block registry leaves untinted bake their own hue;
+    // the rest stay near-neutral for the foliage multiply.
+    const fixed = t.leaves;
+    const light = fixed ? P.foliage[fixed] : P.foliage.neutralLight;
+    const dark = fixed ? P.foliage[`${fixed}Dark`] : P.foliage.neutralDark;
+    tex(`${t.name}_leaves`, (px, rng) => paintLeaves(px, rng, light, dark, {
+      holes: t.name === 'spruce' ? 0.34 : 0.29,
+      berry: t.name === 'cherry' ? 0xfbd7e4 : null,
+    }));
+    tex(t.sapling, (px, rng) => paintSapling(px, rng,
+      fixed ? light : P.foliage.azalea,
+      fixed ? dark : shade(P.foliage.azalea, -0.25),
+      sp.bark));
+
+    tex(`${t.name}_door_bottom`, (px, rng) => paintDoor(px, rng, sp, 'bottom'));
+    tex(`${t.name}_door_top`, (px, rng) => paintDoor(px, rng, sp, 'top'));
+    tex(`${t.name}_trapdoor`, (px, rng) => paintTrapdoor(px, rng, sp));
+  }
+
+  // The mangrove propagule hangs from leaves, so it is a dangling shoot.
+  tex('mangrove_propagule', (px, rng) => {
+    for (let y = 0; y < 6; y++) px.set(8, y, 0x6f8a3a);
+    for (let y = 5; y < S; y++) {
+      px.set(7, y, 0x8fa84a);
+      px.set(8, y, 0x6f8a3a);
+    }
+    for (const [x, y] of [[6, 4], [9, 4], [5, 6], [10, 6]]) {
+      px.set(x, y, 0x4a7a2c); px.set(x, y + 1, 0x5f8f34);
+    }
+    px.set(8, S - 1, 0x4a6a24);
+    px.grain(rng, 0.05);
+  });
+
+  for (const f of FUNGI) {
+    const sp = P.wood[f.name];
+    tex(`${f.name}_planks`, (px, rng) => paintPlanks(px, rng, sp.planks));
+    tex(`${f.name}_stem`, (px, rng) => paintBark(px, rng, sp, { knots: 1 }));
+    tex(`${f.name}_stem_top`, (px, rng) => paintLogTop(px, rng, sp));
+    tex(`stripped_${f.name}_stem`, (px, rng) => paintStripped(px, rng, sp.stripped));
+    tex(`stripped_${f.name}_stem_top`, (px, rng) =>
+      paintLogTop(px, rng, { ...sp, bark: sp.stripped, barkDark: shade(sp.stripped, -0.2) },
+        { core: sp.stripped }));
+    tex(`${f.name}_door_bottom`, (px, rng) => paintDoor(px, rng, sp, 'bottom'));
+    tex(`${f.name}_door_top`, (px, rng) => paintDoor(px, rng, sp, 'top'));
+    tex(`${f.name}_trapdoor`, (px, rng) => paintTrapdoor(px, rng, sp));
+  }
+
+  // Azalea leaves are their own species: dense green with flower flecks.
+  tex('azalea_leaves', (px, rng) =>
+    paintLeaves(px, rng, P.foliage.azalea, shade(P.foliage.azalea, -0.3), { holes: 0.26 }));
+  derive('flowering_azalea_leaves', 'azalea_leaves', (px, rng) => {
+    for (let i = 0; i < 9; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      if (!px.getAlpha(x, y)) continue;
+      px.set(x, y, P.foliage.azaleaFlower);
+      if (rng.chance(0.5)) px.set(w(x + 1), y, shade(P.foliage.azaleaFlower, 0.25));
+    }
+  });
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;

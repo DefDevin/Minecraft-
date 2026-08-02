@@ -12,7 +12,7 @@
 // closest reachable point" instead of stalling the frame.
 
 import { clamp, wrapAngle, approachAngle, AABB } from '../core/math.js';
-import { T, blockOf } from '../world/blocks.js';
+import { T, blockOf, blocksByName } from '../world/blocks.js';
 import { MIN_Y, MAX_Y } from '../world/chunk.js';
 
 // ---------------------------------------------------------------------------
@@ -133,11 +133,11 @@ function warnOnce(goal, method, e) {
 // ---------------------------------------------------------------------------
 
 /**
- * The search volume, centred on the start node. 65x33x65 cells is enough for
- * the 32-block follow ranges mobs use and small enough to index with flat
- * typed arrays that are reused between searches.
+ * The search volume, centred on the start node. 49x25x49 cells covers every
+ * follow range a mob uses and is small enough to index with flat typed arrays
+ * that are reused between searches — no allocation per path, ever.
  */
-const RX = 32, RY = 16;
+const RX = 24, RY = 12;
 const DX = RX * 2 + 1, DY = RY * 2 + 1, DZ = RX * 2 + 1;
 const CELLS = DX * DY * DZ;
 
@@ -145,7 +145,8 @@ const gScore = new Float32Array(CELLS);
 const fScore = new Float32Array(CELLS);
 const cameFrom = new Int32Array(CELLS);
 const stamp = new Int32Array(CELLS);
-const closed = new Uint8Array(CELLS);
+const closedGen = new Int32Array(CELLS);
+/** Bumped per search so the arrays never need clearing. */
 let generation = 0;
 
 /** Binary min-heap over cell indices keyed by fScore. */
@@ -323,7 +324,6 @@ export function findPath(world, sx, sy, sz, tx, ty, tz, ctx, opts = {}) {
 
   const start = cellIndex(0, 0, 0);
   stamp[start] = gen;
-  closed[start] = 0;
   gScore[start] = 0;
   cameFrom[start] = -1;
   fScore[start] = heuristic(sx, sy, sz, tx, ty, tz);
@@ -335,8 +335,8 @@ export function findPath(world, sx, sy, sz, tx, ty, tz, ctx, opts = {}) {
 
   while (heapSize > 0 && expanded < maxNodes) {
     const cur = heapPop();
-    if (closed[cur] === gen % 255 + 1) continue;
-    closed[cur] = gen % 255 + 1;
+    if (closedGen[cur] === gen) continue;
+    closedGen[cur] = gen;
     expanded++;
 
     const clx = (cur % DX) - RX;
