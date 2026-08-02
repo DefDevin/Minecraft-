@@ -700,7 +700,7 @@ function registerMachines() {
       creativeTab: 'redstone',
       textures: (state) => {
         const f = faceOfFacing6(getProp(state, 'facing'));
-        const side = name === 'dispenser' ? 'furnace_side' : 'furnace_side';
+        const side = 'furnace_side';
         const tex = [side, side, side, side, side, side];
         tex[f] = f === 3 || f === 2 ? `${name}_front_vertical` : `${name}_front`;
         tex[FACES[f].opposite] = 'furnace_top';

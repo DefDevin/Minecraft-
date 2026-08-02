@@ -17,6 +17,8 @@ import { Input } from '../core/input.js';
 import { Player, GAMEMODE } from '../entity/player.js';
 import { ItemStack, getItem, itemsByName, canHarvest, isCorrectTool } from './items.js';
 import { Random, parseSeed } from '../core/rng.js';
+import { installHooks } from './hooks.js';
+import { FallbackInventoryScreen } from './ui/fallbackscreens.js';
 import { clamp, lerp, AABB, FACES, yawToFacing } from '../core/math.js';
 
 const TICK_RATE = 20;
@@ -126,6 +128,7 @@ export class Game {
 
     this.setupInventory();
     this.setupSubsystems();
+    installHooks(this);
     return this;
   }
 
@@ -697,7 +700,7 @@ export class Game {
     const Screen = this.player.gamemode === GAMEMODE.CREATIVE
       ? M.menus?.CreativeInventoryScreen
       : M.inventoryScreen?.InventoryScreen;
-    if (Screen) this.pushScreen(new Screen(this));
+    this.pushScreen(Screen ? new Screen(this) : new FallbackInventoryScreen(this, 2));
   }
 
   openPause() {

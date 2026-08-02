@@ -472,6 +472,22 @@ function registerContainers() {
       : facing6OfFace(FACES[ctx.face].opposite),
   });
 
+  // A jukebox holds exactly one record and reports it to comparators.
+  def('jukebox', mat(MAT.wood, {
+    properties: [PROP.hasRecord],
+    defaultState: { has_record: false },
+    hardness: 2,
+    blastResistance: 6,
+    hasEntity: true,
+    container: { slots: 1, type: 'jukebox' },
+    creativeTab: 'functional',
+    redstone: { component: true },
+    textures: { top: 'jukebox_top', side: 'jukebox_side', bottom: 'jukebox_side' },
+    onUse(world, x, y, z, state, player, hand) {
+      return !!world.game?.audio?.useJukebox?.(world, x, y, z, state, player, hand);
+    },
+  }), { blockEntity: 'jukebox' });
+
   cube('bookshelf', {
     top: 'oak_planks', bottom: 'oak_planks', side: 'bookshelf',
   }, mat(MAT.wood, {
