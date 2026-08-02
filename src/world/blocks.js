@@ -232,6 +232,10 @@ export class Block {
     this.maxStack = opts.maxStack ?? 64;
     this.creativeTab = opts.creativeTab ?? 'building';
     this.textures = opts.textures ?? null;
+    // Optional override for "is this state a full opaque cube": set it when a
+    // block supplies a custom model but every state still fills the cell (or
+    // never does), so the registry can skip building models at freeze time.
+    this.fullCubeHint = opts.fullCube;
 
     // Cached per-state data, filled lazily by `modelFor`.
     this._models = new Array(this.stateCount).fill(undefined);
@@ -378,12 +382,21 @@ export function freezeBlocks() {
     T.solid[s] = (col.length === 1 && col[0].minX <= 0 && col[0].minY <= 0 &&
       col[0].minZ <= 0 && col[0].maxX >= 1 && col[0].maxY >= 1 && col[0].maxZ >= 1) ? 1 : 0;
 
-    const model = b.modelFor(s);
+    // Whether the state is a full 16^3 cube decides face culling and opacity.
+    // Blocks using the default model are full by construction, so skip building
+    // (and caching) tens of thousands of models that may never be rendered.
     let full = 0;
-    if (model && model.length === 1) {
-      const bx = model[0];
-      if (bx.from[0] <= 0 && bx.from[1] <= 0 && bx.from[2] <= 0 &&
-        bx.to[0] >= 16 && bx.to[1] >= 16 && bx.to[2] >= 16) full = 1;
+    if (b.fullCubeHint !== undefined) {
+      full = b.fullCubeHint ? 1 : 0;
+    } else if (!b.getModel) {
+      full = b.render === RENDER.CUBE ? 1 : 0;
+    } else {
+      const model = b.modelFor(s);
+      if (model && model.length === 1) {
+        const bx = model[0];
+        if (bx.from[0] <= 0 && bx.from[1] <= 0 && bx.from[2] <= 0 &&
+          bx.to[0] >= 16 && bx.to[1] >= 16 && bx.to[2] >= 16) full = 1;
+      }
     }
     T.fullCube[s] = full;
     T.opaque[s] = (b.opaque && full) ? 1 : 0;
