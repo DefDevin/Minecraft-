@@ -34,10 +34,16 @@ function ok(cond, what) {
   }
 }
 
-const eq = (a, b, what) => ok(Object.is(a, b), `${what} (got ${fmt(a)}, want ${fmt(b)})`);
 const fmt = (v) => (v === null ? 'null' : v === undefined ? 'undefined' : String(v));
-const deep = (a, b, what) => ok(JSON.stringify(a) === JSON.stringify(b),
-  `${what}\n        got  ${JSON.stringify(a)}\n        want ${JSON.stringify(b)}`);
+
+function eq(a, b, what) {
+  ok(Object.is(a, b), Object.is(a, b) ? what : `${what} (got ${fmt(a)}, want ${fmt(b)})`);
+}
+
+function deep(a, b, what) {
+  const ja = JSON.stringify(a), jb = JSON.stringify(b);
+  ok(ja === jb, ja === jb ? what : `${what}\n        got  ${ja}\n        want ${jb}`);
+}
 
 // ---------------------------------------------------------------------------
 // A handful of items to shuffle around

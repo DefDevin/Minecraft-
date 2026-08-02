@@ -489,6 +489,510 @@ export function registerBlockTextures() {
   registerOverlays();
 }
 
+// ---------------------------------------------------------------------------
+// Stone and rock
+// ---------------------------------------------------------------------------
+
+/** A carved panel motif — chiselled bricks in every stone family share it. */
+function paintChiseled(px, rng, base, opts = {}) {
+  paintStoneish(px, rng, base, { grain: 0.04, clusters: 2, amp: 0.07 });
+  px.frame(0, 0, S, S, shade(base, -0.3));
+  px.rect(2, 2, 12, 12, shade(base, 0.06));
+  px.bevel(2, 2, 12, 12, 0.2, 0.24);
+  const acc = opts.accent ?? shade(base, -0.26);
+  // A shallow relief: centre column flanked by notches.
+  px.rect(6, 4, 4, 8, shade(base, -0.1));
+  px.bevel(6, 4, 4, 8, 0.22, 0.26);
+  px.vline(7, 5, 10, acc);
+  px.vline(8, 5, 10, shade(base, 0.12));
+  px.hline(4, 11, 3, acc);
+  px.hline(4, 11, 12, acc);
+  px.set(4, 4, acc); px.set(11, 4, acc);
+  px.set(4, 11, acc); px.set(11, 11, acc);
+  px.grain(rng, 0.03);
+}
+
+/** Vertically streaked stone — deepslate's side face and basalt columns. */
+function paintStreaked(px, rng, base, dark, opts = {}) {
+  for (let x = 0; x < S; x++) {
+    const t = rng.next();
+    for (let y = 0; y < S; y++) {
+      const v = clamp(t + Math.sin(y * 0.55 + x * 1.7) * (opts.wave ?? 0.12)
+        + (rng.next() - 0.5) * 0.18, 0, 1);
+      px.set(x, y, mixHex(dark, base, v));
+    }
+  }
+  for (let i = 0; i < (opts.seams ?? 3); i++) {
+    const x = rng.int(S), y0 = rng.int(S), len = 4 + rng.int(10);
+    for (let k = 0; k < len; k++) blendw(px, x, y0 + k, shade(dark, -0.25), 0.55);
+  }
+  px.grain(rng, opts.grain ?? 0.05);
+}
+
+/** A tapered dripstone segment on transparency. */
+function dripstoneSegment(px, rng, wTop, wBot, opts = {}) {
+  const base = P.stone.dripstone;
+  for (let y = 0; y < S; y++) {
+    const t = y / (S - 1);
+    const width = lerp(wTop, wBot, t);
+    const half = width / 2;
+    for (let x = 0; x < S; x++) {
+      const d = Math.abs(x + 0.5 - 8);
+      if (d > half) continue;
+      const edge = d / Math.max(half, 0.5);
+      let c = mixHex(shade(base, 0.16), shade(base, -0.3), edge * 0.9);
+      if (x + 0.5 < 8) c = shade(c, 0.1);
+      px.set(x, y, shade(c, (rng.next() - 0.5) * 0.1));
+    }
+  }
+  px.grain(rng, 0.05);
+  if (opts.tip) {
+    // Wet stone catches a highlight at the point.
+    for (let y = S - 3; y < S; y++) px.shadePixel(8, y, 0.2);
+  }
+}
+
+function registerStone() {
+  tex('stone', (px, rng) => {
+    paintStoneish(px, rng, P.stone.stone, { amp: 0.09, grain: 0.06, clusters: 5 });
+  });
+  tex('smooth_stone', (px, rng) => {
+    noiseFill(px, rng, P.stone.smooth, 0.045, 2, 3);
+    px.grain(rng, 0.028);
+    frameBevel(px, 0.06, 0.08);
+  });
+  tex('cobblestone', (px, rng) => paintCobbles(px, rng, P.stone.cobble, { count: 11 }));
+  derive('mossy_cobblestone', 'cobblestone', (px, rng) => mossOver(px, rng, { threshold: 0.48 }));
+
+  tex('stone_bricks', (px, rng) => {
+    const base = P.stone.brick;
+    paintStoneish(px, rng, base, { amp: 0.07, grain: 0.045, clusters: 3 });
+    const mortar = shade(base, -0.4);
+    // 2x2 bricks with a 1px groove between them.
+    px.hline(0, S - 1, 7, mortar);
+    px.hline(0, S - 1, 15, mortar);
+    px.vline(7, 0, 7, mortar);
+    px.vline(15, 8, 15, mortar);
+    px.bevel(0, 0, 8, 8, 0.16, 0.0);
+    px.bevel(8, 0, 8, 8, 0.16, 0.0);
+    px.bevel(0, 8, 8, 8, 0.16, 0.0);
+    px.bevel(8, 8, 8, 8, 0.16, 0.0);
+    px.grain(rng, 0.03);
+  });
+  derive('mossy_stone_bricks', 'stone_bricks', (px, rng) => mossOver(px, rng, { threshold: 0.5 }));
+  derive('cracked_stone_bricks', 'stone_bricks', (px, rng) => {
+    crackWalk(px, rng, 4, 12, shade(P.stone.brick, -0.5), 0.85);
+  });
+  tex('chiseled_stone_bricks', (px, rng) => paintChiseled(px, rng, P.stone.brick));
+
+  tex('granite', (px, rng) => {
+    paintStoneish(px, rng, P.stone.granite, { amp: 0.13, clusters: 6, freq: 3 });
+    px.speckle(rng, 30, P.stone.graniteFleck, 0.55);
+    px.speckle(rng, 16, shade(P.stone.granite, -0.32), 0.5);
+  });
+  tex('polished_granite', (px, rng) => {
+    noiseFill(px, rng, P.stone.granitePolished, 0.05, 2, 3);
+    px.speckle(rng, 20, P.stone.graniteFleck, 0.35);
+    px.grain(rng, 0.03);
+    frameBevel(px);
+  });
+  tex('diorite', (px, rng) => {
+    paintStoneish(px, rng, P.stone.diorite, { amp: 0.09, clusters: 7, freq: 3 });
+    px.speckle(rng, 36, P.stone.dioriteDark, 0.6);
+    px.speckle(rng, 22, 0xffffff, 0.4);
+  });
+  tex('polished_diorite', (px, rng) => {
+    noiseFill(px, rng, P.stone.dioritePolished, 0.04, 2, 3);
+    px.speckle(rng, 18, P.stone.dioriteDark, 0.3);
+    px.grain(rng, 0.025);
+    frameBevel(px);
+  });
+  tex('andesite', (px, rng) => {
+    paintStoneish(px, rng, P.stone.andesite, { amp: 0.11, clusters: 5, freq: 4 });
+    px.speckle(rng, 28, P.stone.andesiteDark, 0.5);
+    px.speckle(rng, 14, shade(P.stone.andesite, 0.2), 0.4);
+  });
+  tex('polished_andesite', (px, rng) => {
+    noiseFill(px, rng, P.stone.andesitePolished, 0.05, 2, 3);
+    px.speckle(rng, 16, P.stone.andesiteDark, 0.3);
+    px.grain(rng, 0.028);
+    frameBevel(px);
+  });
+
+  // --- deepslate ---
+  tex('deepslate', (px, rng) => {
+    paintStreaked(px, rng, P.stone.deepslate, P.stone.deepslateDark, { seams: 4 });
+  });
+  tex('deepslate_top', (px, rng) => {
+    paintStoneish(px, rng, P.stone.deepslate, { amp: 0.13, clusters: 5, freq: 3 });
+    clusters(px, rng, 3, P.stone.deepslateDark, 0.7, 4);
+  });
+  tex('cobbled_deepslate', (px, rng) => {
+    paintCobbles(px, rng, P.stone.cobbledDeepslate, { count: 12, spread: 0.3 });
+  });
+  tex('polished_deepslate', (px, rng) => {
+    noiseFill(px, rng, P.stone.polishedDeepslate, 0.06, 2, 3);
+    px.grain(rng, 0.035);
+    px.speckle(rng, 14, P.stone.deepslateDark, 0.4);
+    frameBevel(px, 0.12, 0.14);
+  });
+  tex('deepslate_bricks', (px, rng) => {
+    paintBrickCourse(px, rng, P.stone.deepslateBrick, shade(P.stone.deepslateBrick, -0.45),
+      { rows: 4, perRow: 2, jitter: 0.1 });
+    px.grain(rng, 0.04);
+  });
+  derive('cracked_deepslate_bricks', 'deepslate_bricks', (px, rng) => {
+    crackWalk(px, rng, 4, 11, 0x1c1c20, 0.8);
+  });
+  tex('deepslate_tiles', (px, rng) => {
+    const base = P.stone.deepslateTile;
+    paintStoneish(px, rng, base, { amp: 0.07, grain: 0.04, clusters: 3 });
+    const mortar = shade(base, -0.45);
+    for (const g of [3, 7, 11, 15]) { px.hline(0, S - 1, g, mortar); px.vline(g, 0, S - 1, mortar); }
+    for (let ty = 0; ty < 4; ty++) {
+      for (let tx = 0; tx < 4; tx++) px.bevel(tx * 4, ty * 4, 4, 4, 0.14, 0.0);
+    }
+    px.grain(rng, 0.03);
+  });
+  derive('cracked_deepslate_tiles', 'deepslate_tiles', (px, rng) => {
+    crackWalk(px, rng, 5, 9, 0x15151a, 0.8);
+  });
+  tex('chiseled_deepslate', (px, rng) => paintChiseled(px, rng, P.stone.deepslate));
+  tex('reinforced_deepslate', (px, rng) => {
+    paintStreaked(px, rng, P.stone.reinforced, shade(P.stone.reinforced, -0.4), { seams: 2 });
+    // The bound sigil: a bright frame with corner studs.
+    px.frame(2, 2, 12, 12, 0x8f9aa5);
+    px.frame(3, 3, 10, 10, 0x2a2a2e);
+    px.rect(6, 6, 4, 4, 0x6f7a86);
+    px.bevel(6, 6, 4, 4, 0.2, 0.25);
+    for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) px.set(x, y, 0xc8d2dc);
+    px.grain(rng, 0.03);
+  });
+
+  // --- tuff, calcite, dripstone ---
+  tex('tuff', (px, rng) => {
+    paintStoneish(px, rng, P.stone.tuff, { amp: 0.14, clusters: 6, freq: 3 });
+    px.speckle(rng, 26, P.stone.tuffDark, 0.55);
+    px.speckle(rng, 12, shade(P.stone.tuff, 0.2), 0.4);
+  });
+  tex('polished_tuff', (px, rng) => {
+    noiseFill(px, rng, shade(P.stone.tuff, 0.06), 0.05, 2, 3);
+    px.grain(rng, 0.03);
+    px.speckle(rng, 12, P.stone.tuffDark, 0.35);
+    frameBevel(px);
+  });
+  tex('tuff_bricks', (px, rng) => {
+    paintBrickCourse(px, rng, P.stone.tuff, shade(P.stone.tuff, -0.42), { rows: 4, perRow: 2 });
+    px.speckle(rng, 14, P.stone.tuffDark, 0.4);
+    px.grain(rng, 0.035);
+  });
+  tex('chiseled_tuff', (px, rng) => paintChiseled(px, rng, P.stone.tuff));
+  tex('chiseled_tuff_bricks', (px, rng) => paintChiseled(px, rng, shade(P.stone.tuff, 0.05)));
+  tex('calcite', (px, rng) => {
+    paintStoneish(px, rng, P.stone.calcite, { amp: 0.05, clusters: 4, freq: 5, grain: 0.045 });
+    px.speckle(rng, 30, shade(P.stone.calcite, -0.14), 0.5);
+    px.speckle(rng, 16, 0xffffff, 0.5);
+  });
+  tex('dripstone_block', (px, rng) => {
+    paintStoneish(px, rng, P.stone.dripstone, { amp: 0.14, clusters: 5, freq: 3 });
+    // Vertical drip runs.
+    for (let i = 0; i < 6; i++) {
+      const x = rng.int(S), y0 = rng.int(S), len = 3 + rng.int(6);
+      for (let k = 0; k < len; k++) blendw(px, x, y0 + k, shade(P.stone.dripstone, -0.25), 0.5);
+    }
+    px.grain(rng, 0.06);
+  });
+  for (const dir of ['up', 'down']) {
+    const parts = [['base', 13, 11], ['frustum', 11, 9], ['middle', 9, 6], ['tip', 6, 1]];
+    for (const [part, a, b] of parts) {
+      const [wTop, wBot] = dir === 'up' ? [b, a] : [a, b];
+      tex(`pointed_dripstone_${dir}_${part}`,
+        (px, rng) => dripstoneSegment(px, rng, wTop, wBot, { tip: part === 'tip' }));
+    }
+  }
+
+  // --- gravel, clay, bedrock, obsidian ---
+  tex('gravel', (px, rng) => {
+    const field = cellField(rng, 20);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const f = field(x + 0.5, y + 0.5);
+        const c = shade(P.stone.gravel, (f.cell.tone - 0.5) * 0.5);
+        const b = clamp(-(f.ox + f.oy) / 6, -0.3, 0.3);
+        px.set(x, y, shade(c, b * 0.5));
+        if (f.gap < 0.5) px.set(x, y, shade(P.stone.gravel, -0.45));
+      }
+    }
+    px.grain(rng, 0.09);
+    px.speckle(rng, 20, 0x4a4644, 0.5);
+  });
+  tex('clay', (px, rng) => {
+    noiseFill(px, rng, P.stone.clay, 0.07, 3, 5);
+    px.grain(rng, 0.05);
+    px.speckle(rng, 22, shade(P.stone.clay, -0.16), 0.5);
+    px.speckle(rng, 12, shade(P.stone.clay, 0.14), 0.4);
+  });
+  tex('bedrock', (px, rng) => {
+    paintStoneish(px, rng, P.stone.bedrock, { amp: 0.24, clusters: 8, freq: 3, grain: 0.1 });
+    clusters(px, rng, 6, 0x1c1c1c, 0.9, 4);
+    clusters(px, rng, 4, 0x8f8f8f, 0.6, 3);
+  });
+  tex('obsidian', (px, rng) => {
+    noiseFill(px, rng, P.stone.obsidian, 0.3, 3, 4);
+    px.grain(rng, 0.07);
+    // Conchoidal facets: a few bright purple glints.
+    for (let i = 0; i < 7; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      px.blend(x, y, 0x6a4fa8, 0.7);
+      if (rng.chance(0.5)) px.blend(w(x + 1), y, 0x40306a, 0.5);
+    }
+    px.speckle(rng, 18, 0x000000, 0.5);
+  });
+  derive('crying_obsidian', 'obsidian', (px, rng) => {
+    for (let i = 0; i < 5; i++) {
+      const x = rng.int(S), y = rng.int(S), len = 2 + rng.int(4);
+      for (let k = 0; k < len; k++) {
+        blendw(px, x, y + k, k === 0 ? 0x8f6ff5 : P.stone.obsidianCry, 0.85);
+      }
+      blendw(px, x, y + len, 0xa88ffa, 0.9);
+    }
+  });
+
+  // --- basalt and blackstone ---
+  tex('basalt_side', (px, rng) => {
+    paintStreaked(px, rng, P.stone.basalt, P.stone.basaltDark, { seams: 5, wave: 0.06 });
+  });
+  tex('basalt_top', (px, rng) => {
+    paintStoneish(px, rng, P.stone.basalt, { amp: 0.12, clusters: 4, freq: 4 });
+    // The columnar joint pattern: a ring of dark cracks.
+    const field = cellField(rng, 5);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        if (field(x + 0.5, y + 0.5).gap < 0.9) px.set(x, y, P.stone.basaltDark);
+      }
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('polished_basalt_side', (px, rng) => {
+    noiseFill(px, rng, shade(P.stone.basalt, 0.08), 0.05, 2, 3);
+    for (const x of [2, 5, 8, 11, 14]) px.vline(x, 0, S - 1, shade(P.stone.basalt, -0.22));
+    for (const x of [3, 6, 9, 12]) px.vline(x, 0, S - 1, shade(P.stone.basalt, 0.16));
+    px.grain(rng, 0.035);
+  });
+  tex('polished_basalt_top', (px, rng) => {
+    noiseFill(px, rng, shade(P.stone.basalt, 0.08), 0.05, 2, 3);
+    for (let r = 2; r < 9; r += 2) px.circle(7.5, 7.5, r, shade(P.stone.basalt, -0.2), 255, false);
+    px.grain(rng, 0.035);
+    frameBevel(px, 0.1, 0.12);
+  });
+  tex('smooth_basalt', (px, rng) => {
+    noiseFill(px, rng, P.stone.smoothBasalt, 0.09, 3, 4);
+    px.grain(rng, 0.045);
+    px.speckle(rng, 18, shade(P.stone.smoothBasalt, -0.3), 0.5);
+    px.speckle(rng, 8, shade(P.stone.smoothBasalt, 0.22), 0.4);
+  });
+  tex('blackstone', (px, rng) => {
+    paintStoneish(px, rng, P.stone.blackstone, { amp: 0.2, clusters: 6, freq: 3, grain: 0.07 });
+    px.speckle(rng, 22, P.stone.blackstoneDark, 0.6);
+    px.speckle(rng, 10, 0x4a4048, 0.5);
+  });
+  derive('gilded_blackstone', 'blackstone', (px, rng) => {
+    scatterMineral(px, rng, P.ore.gold, 5, 1.1, 1.8);
+  });
+  tex('polished_blackstone', (px, rng) => {
+    noiseFill(px, rng, shade(P.stone.blackstone, 0.08), 0.07, 2, 3);
+    px.grain(rng, 0.04);
+    frameBevel(px, 0.12, 0.14);
+    px.speckle(rng, 10, P.stone.blackstoneDark, 0.4);
+  });
+  tex('polished_blackstone_bricks', (px, rng) => {
+    paintBrickCourse(px, rng, shade(P.stone.blackstone, 0.1),
+      shade(P.stone.blackstone, -0.4), { rows: 4, perRow: 2 });
+    px.grain(rng, 0.04);
+  });
+  derive('cracked_polished_blackstone_bricks', 'polished_blackstone_bricks', (px, rng) => {
+    crackWalk(px, rng, 4, 11, 0x0d0a0e, 0.85);
+  });
+  tex('chiseled_polished_blackstone', (px, rng) => {
+    paintChiseled(px, rng, shade(P.stone.blackstone, 0.1));
+  });
+
+  // --- prismarine ---
+  tex('prismarine', (px, rng) => {
+    // A loose mosaic of teal tiles, brighter toward the middle of each.
+    const field = cellField(rng, 14);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const f = field(x + 0.5, y + 0.5);
+        let c = shade(P.stone.prismarine, (f.cell.tone - 0.5) * 0.34);
+        if (f.gap < 0.8) c = shade(P.stone.prismarineDark, 0.05);
+        px.set(x, y, c);
+      }
+    }
+    px.grain(rng, 0.05);
+    px.speckle(rng, 12, 0x9fd8c8, 0.4);
+  });
+  tex('prismarine_bricks', (px, rng) => {
+    noiseFill(px, rng, P.stone.prismarineBrick, 0.07, 2, 4);
+    const mortar = shade(P.stone.prismarineBrick, -0.34);
+    for (const g of [7, 15]) { px.hline(0, S - 1, g, mortar); px.vline(g, 0, S - 1, mortar); }
+    for (let ty = 0; ty < 2; ty++) {
+      for (let tx = 0; tx < 2; tx++) {
+        px.bevel(tx * 8, ty * 8, 8, 8, 0.18, 0.06);
+        px.rect(tx * 8 + 3, ty * 8 + 3, 2, 2, shade(P.stone.prismarineBrick, 0.22));
+      }
+    }
+    px.grain(rng, 0.035);
+  });
+  tex('dark_prismarine', (px, rng) => {
+    noiseFill(px, rng, P.stone.prismarineDark, 0.1, 3, 6);
+    px.grain(rng, 0.06);
+    for (let y = 0; y < S; y += 2) {
+      for (let x = (y >> 1) % 2; x < S; x += 2) {
+        px.blend(x, y, shade(P.stone.prismarineDark, 0.18), 0.4);
+      }
+    }
+    px.speckle(rng, 10, 0x6fa89a, 0.35);
+  });
+
+  // --- moss, sculk ---
+  tex('moss_block', (px, rng) => {
+    noiseFill(px, rng, P.stone.moss, 0.18, 3, 5);
+    px.grain(rng, 0.09);
+    clusters(px, rng, 6, P.stone.mossDark, 0.7, 4);
+    clusters(px, rng, 4, shade(P.stone.moss, 0.24), 0.5, 3);
+    px.speckle(rng, 14, 0x2c4416, 0.5);
+  });
+  tex('sculk', (px, rng) => {
+    noiseFill(px, rng, P.stone.sculk, 0.3, 3, 4);
+    px.grain(rng, 0.07);
+    // Glowing filaments.
+    for (let i = 0; i < 9; i++) {
+      let x = rng.int(S), y = rng.int(S);
+      for (let k = 0; k < 3 + rng.int(4); k++) {
+        blendw(px, x, y, P.stone.sculkGlow, 0.55 + rng.next() * 0.35);
+        x += rng.int(3) - 1; y += rng.int(3) - 1;
+      }
+    }
+    px.speckle(rng, 14, 0x061a1f, 0.6);
+  });
+  tex('sculk_vein', (px, rng) => {
+    // Tendrils on transparency, so it can lie over any face.
+    for (let i = 0; i < 11; i++) {
+      let x = rng.int(S), y = rng.int(S);
+      for (let k = 0; k < 4 + rng.int(6); k++) {
+        setw(px, x, y, rng.chance(0.25) ? P.stone.sculkGlow : P.stone.sculkVein);
+        if (rng.chance(0.35)) setw(px, x + 1, y, shade(P.stone.sculkVein, -0.3));
+        x += rng.int(3) - 1; y += rng.int(3) - 1;
+      }
+    }
+  });
+  derive('sculk_catalyst_bottom', 'sculk', (px, rng) => { px.scale(0.85); px.grain(rng, 0.05); });
+  tex('sculk_catalyst_top', (px, rng) => {
+    paintInto('sculk', px);
+    // The bone-white crown of horns.
+    for (let i = 0; i < 5; i++) {
+      const x = 2 + rng.int(12), y = 2 + rng.int(12);
+      px.set(x, y, P.misc.bone);
+      px.set(w(x + 1), y, P.misc.boneDark);
+      px.set(x, w(y + 1), P.misc.boneDark);
+    }
+    px.speckle(rng, 8, P.stone.sculkGlow, 0.5);
+  });
+  tex('sculk_catalyst_side', (px, rng) => {
+    paintInto('sculk', px);
+    for (let x = 0; x < S; x++) {
+      const h = 2 + (rng.next() > 0.6 ? 1 : 0);
+      for (let y = 0; y < h; y++) px.set(x, y, y === 0 ? P.misc.bone : P.misc.boneDark);
+    }
+    px.speckle(rng, 6, P.stone.sculkGlow, 0.5);
+  });
+  derive('sculk_catalyst_side_bloom', 'sculk_catalyst_side', (px, rng) => {
+    for (let i = 0; i < 16; i++) px.blend(rng.int(S), 2 + rng.int(14), 0x4ff0e0, 0.6);
+  });
+  tex('sculk_sensor_top', (px, rng) => {
+    paintInto('sculk', px);
+    // Two tendrils reaching up out of the block.
+    for (const cx of [4, 11]) {
+      for (let k = 0; k < 5; k++) {
+        px.set(w(cx + (k % 2)), 3 + k, k < 2 ? P.stone.sculkGlow : P.stone.sculkVein);
+      }
+    }
+    px.rect(6, 6, 4, 4, 0x1c4a52);
+    px.bevel(6, 6, 4, 4, 0.2, 0.2);
+  });
+  derive('sculk_sensor_side', 'sculk', (px, rng) => {
+    for (let x = 0; x < S; x++) px.set(x, 0, rng.chance(0.4) ? P.stone.sculkGlow : P.stone.sculkVein);
+    for (let x = 0; x < S; x++) px.set(x, 1, P.stone.sculkVein);
+  });
+  derive('sculk_sensor_bottom', 'sculk', (px) => px.scale(0.8));
+  tex('sculk_shrieker_top', (px, rng) => {
+    paintInto('sculk', px);
+    for (let r = 6; r >= 2; r -= 2) {
+      px.circle(7.5, 7.5, r, r === 6 ? 0x1c4a52 : shade(P.stone.sculkGlow, -0.3), 255, false);
+    }
+    px.circle(7.5, 7.5, 1.4, 0x0a1a1e);
+    px.speckle(rng, 6, P.stone.sculkGlow, 0.5);
+  });
+  derive('sculk_shrieker_side', 'sculk', (px, rng) => {
+    px.hline(0, S - 1, 0, P.misc.bone);
+    px.hline(0, S - 1, 1, P.misc.boneDark);
+    for (let i = 0; i < 5; i++) px.blend(rng.int(S), 2 + rng.int(13), P.stone.sculkGlow, 0.5);
+  });
+  derive('sculk_shrieker_bottom', 'sculk', (px) => px.scale(0.8));
+
+  // --- amethyst ---
+  tex('amethyst_block', (px, rng) => {
+    noiseFill(px, rng, P.stone.amethyst, 0.16, 3, 4);
+    // Facets: short bright and dark diagonals.
+    for (let i = 0; i < 12; i++) {
+      const x = rng.int(S), y = rng.int(S), len = 2 + rng.int(4);
+      const c = rng.chance(0.5) ? P.stone.amethystBud : P.stone.amethystDeep;
+      for (let k = 0; k < len; k++) blendw(px, x + k, y + k, c, 0.7);
+    }
+    px.grain(rng, 0.05);
+  });
+  derive('budding_amethyst', 'amethyst_block', (px, rng) => {
+    // Four budding sites, one per quadrant.
+    for (const [cx, cy] of [[4, 4], [11, 4], [4, 11], [11, 11]]) {
+      px.circle(cx, cy, 2.2, P.stone.amethystDeep);
+      px.circle(cx, cy, 1.2, shade(P.stone.amethystDeep, -0.35));
+      px.set(cx - 1, cy - 1, P.stone.amethystBud);
+    }
+    px.grain(rng, 0.04);
+  });
+  const budSizes = { small: 3, medium: 5, large: 7 };
+  for (const [size, h] of Object.entries(budSizes)) {
+    tex(`${size}_amethyst_bud`, (px, rng) => {
+      const top = S - h - 1;
+      for (let y = top; y < S; y++) {
+        const half = 1 + Math.round(((y - top) / h) * 1.6);
+        for (let x = 8 - half; x <= 7 + half; x++) {
+          px.set(x, y, x < 8 ? P.stone.amethystBud : P.stone.amethyst);
+        }
+      }
+      px.set(8, top, shade(P.stone.amethystBud, 0.3));
+      for (let y = top; y < S; y++) px.set(6 + (y % 2), y, P.stone.amethystDeep);
+      px.grain(rng, 0.05);
+    });
+  }
+  tex('amethyst_cluster', (px, rng) => {
+    // Three crystals of different heights sharing a base.
+    const spikes = [[5, 5], [8, 2], [11, 7]];
+    for (const [cx, top] of spikes) {
+      for (let y = top; y < S; y++) {
+        const t = (y - top) / (S - top);
+        const half = Math.max(0, Math.round(t * 2.2));
+        for (let x = cx - half; x <= cx + half; x++) {
+          px.set(x, y, x < cx ? P.stone.amethystBud : x > cx ? P.stone.amethystDeep : P.stone.amethyst);
+        }
+      }
+      px.set(cx, top, 0xe0d0ff);
+    }
+    px.grain(rng, 0.05);
+  });
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;

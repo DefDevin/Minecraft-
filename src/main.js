@@ -61,10 +61,12 @@ export async function start() {
   // --- 2. Items ---------------------------------------------------------
   boot.step('registering items…', 0.15);
   const itemdefs = await optional('./game/itemdefs.js', 'item definitions');
-  if (!register(itemdefs, 'registerAllItems', 'item definitions')) registerMinimalItems();
+  register(itemdefs, 'registerAllItems', 'item definitions');
   // Any block whose item form the content module missed still needs one, or it
-  // cannot be picked up or placed.
-  registerMinimalItems();
+  // cannot be picked up or placed. Idempotent, so it also covers the case where
+  // itemdefs was missing entirely.
+  const filled = registerMinimalItems();
+  if (filled > 0) console.info(`[items] ${filled} block items filled in`);
   console.info(`[items] ${itemsByName.size} items`);
 
   const recipes = await optional('./game/recipes.js', 'recipes');
