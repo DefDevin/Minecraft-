@@ -8,11 +8,10 @@
 // works standalone.
 
 import {
-  def, st, cube, MAT, mat, boxesToModel, buttonBlock, pressurePlateBlock,
+  def, MAT, mat, boxesToModel, buttonBlock, pressurePlateBlock,
   attachStateFor, attachSupportOffset, isWaterAt, stateLight, faceFacing,
-  lookFacing, fixedDrop, topHalf,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  lookFacing, fixedDrop, PROP, getProp, withProp, stateOf, blockOf, RENDER,
+  PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE, HIDDEN,
 } from './helpers.js';
 import { getBlock } from '../blocks.js';
 import { XP, MAP, DIRS, FACING_INDEX, FACING6 } from './data.js';
@@ -305,7 +304,7 @@ function registerInputs() {
     opaque: false,
     push: PUSH.DESTROY,
     item: 'string',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     redstone: { component: true },
     textures: 'tripwire',
     model: (state) => boxesToModel(
@@ -602,7 +601,7 @@ function registerPistons() {
     opaque: false,
     push: PUSH.BLOCK,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     drops: () => [],
     textures: (state) => (getProp(state, 'type') === 'sticky'
       ? 'piston_top_sticky' : 'piston_top'),
@@ -630,7 +629,7 @@ function registerPistons() {
     push: PUSH.BLOCK,
     hasEntity: true,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     drops: () => [],
     collision: () => SHAPE.NONE,
     selection: () => SHAPE.NONE,
@@ -891,7 +890,7 @@ function redstoneTorches() {
     opaque: false,
     push: PUSH.DESTROY,
     item: 'redstone_torch',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     redstone: { component: true, source: true, power: 15 },
     textures: (state) => (getProp(state, 'lit') ? 'redstone_torch' : 'redstone_torch_off'),
     model: (state) => boxesToModel(

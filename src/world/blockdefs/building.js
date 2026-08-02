@@ -5,13 +5,12 @@
 // that is already registered, so hardness only ever gets written once.
 
 import {
-  def, st, cube, pillar, axisPlacement, MAT, mat, boxesToModel,
-  stairsBlock, slabBlock, wallBlock, fenceBlock, paneBlock, isWaterAt,
-  silkOnly, fixedDrop, oreDrop, stateLight, orientedFaces, faceFacing, lookFacing,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  def, cube, pillar, axisPlacement, MAT, mat, boxesToModel, stairsBlock,
+  slabBlock, wallBlock, fenceBlock, paneBlock, isWaterAt, silkOnly, oreDrop,
+  faceFacing, PROP, getProp, withProp, stateOf, blockOf, RENDER, PASS, SOUND,
+  TIER, PUSH, T,
 } from './helpers.js';
-import { getBlock, box, faceTextures } from '../blocks.js';
+import { getBlock, box } from '../blocks.js';
 import {
   STONE_FAMILIES, COLORS, COLOR_MAP, TERRACOTTA_MAP, MAP, DIRS, FACING_INDEX,
   FACING6, COPPER_STAGES, WEATHERING,

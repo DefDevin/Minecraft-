@@ -7,16 +7,15 @@
 // know whether an interface layer exists yet.
 
 import {
-  def, st, cube, pillar, axisPlacement, MAT, mat, boxesToModel, crossBlock,
-  isWaterAt, silkOnly, fixedDrop, oreDrop, stateLight, NO_MODEL,
-  faceFacing, lookFacing, attachStateFor, attachSupportOffset, topHalf,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  def, cube, MAT, mat, boxesToModel, isWaterAt, silkOnly, fixedDrop, oreDrop,
+  stateLight, NO_MODEL, faceFacing, lookFacing, attachStateFor, PROP,
+  getProp, withProp, stateOf, blockOf, RENDER, PASS, SOUND, TOOL, TIER, PUSH,
+  T, SHAPE, HIDDEN,
 } from './helpers.js';
 import { getBlock } from '../blocks.js';
 import { multifaceBlock } from './plants.js';
 import { faceOfFacing6, facing6OfFace } from './redstone.js';
-import { XP, MAP, DIRS, FACING_INDEX, FACING6 } from './data.js';
+import { XP, MAP, DIRS, FACING_INDEX } from './data.js';
 import { AABB, FACES, HORIZONTAL } from '../../core/math.js';
 
 export function registerUtility() {
@@ -323,7 +322,7 @@ function registerCauldrons() {
   def('water_cauldron', Object.assign({}, base, {
     properties: [XP.level3],
     defaultState: { level: 1 },
-    creativeTab: null,
+    creativeTab: HIDDEN,
     onUse(world, x, y, z, state, player, hand) {
       return !!world.game?.fluids?.useCauldron?.(world, x, y, z, state, player, hand);
     },
@@ -331,7 +330,7 @@ function registerCauldrons() {
   def('lava_cauldron', Object.assign({}, base, {
     light: 15,
     emissive: 15,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     onUse(world, x, y, z, state, player, hand) {
       return !!world.game?.fluids?.useCauldron?.(world, x, y, z, state, player, hand);
     },
@@ -339,7 +338,7 @@ function registerCauldrons() {
   def('powder_snow_cauldron', Object.assign({}, base, {
     properties: [XP.level3],
     defaultState: { level: 1 },
-    creativeTab: null,
+    creativeTab: HIDDEN,
   }), { noConnect: true, cauldronContents: 'powder_snow' });
 }
 
@@ -775,7 +774,7 @@ function torchPair(name, wallName, light, mapColor) {
     opaque: false,
     push: PUSH.DESTROY,
     item: name,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: name,
     model: (state) => boxesToModel(
       SHAPE.wallTorchShape(FACING_INDEX[getProp(state, 'facing')]), name,
@@ -1180,7 +1179,7 @@ function registerFireAndPortals() {
     randomTick: true,
     push: PUSH.DESTROY,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: 'fire_0',
     model: (state) => boxesToModel(fireBoxes(state), 'fire_0', { emissive: 15 }),
     collision: () => SHAPE.NONE,
@@ -1219,7 +1218,7 @@ function registerFireAndPortals() {
     replaceable: true,
     push: PUSH.DESTROY,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: 'soul_fire_0',
     model: () => boxesToModel([new AABB(0, 0, 0, 1, 1, 1)], 'soul_fire_0', { emissive: 10 }),
     collision: () => SHAPE.NONE,
@@ -1249,7 +1248,7 @@ function registerFireAndPortals() {
     opaque: false,
     push: PUSH.BLOCK,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: 'nether_portal',
     model: (state) => boxesToModel(portalBoxes(getProp(state, 'axis')),
       'nether_portal', { emissive: 11 }),
@@ -1275,7 +1274,7 @@ function registerFireAndPortals() {
     push: PUSH.BLOCK,
     hasEntity: true,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: 'end_portal',
     model: () => boxesToModel([new AABB(0, 0, 0, 1, 12 / 16, 1)], 'end_portal',
       { emissive: 15 }),
@@ -1329,7 +1328,7 @@ function registerFireAndPortals() {
     push: PUSH.BLOCK,
     hasEntity: true,
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     collision: () => SHAPE.NONE,
     selection: () => SHAPE.NONE,
     drops: () => [],

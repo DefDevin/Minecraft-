@@ -5,12 +5,11 @@
 // whether the wood burns, so a single factory covers both.
 
 import {
-  def, st, cube, pillar, axisPlacement, MAT, mat, boxesToModel,
-  stairsBlock, slabBlock, fenceBlock, fenceGateBlock, doorBlock, trapdoorBlock,
-  buttonBlock, pressurePlateBlock, crossBlock, lookFacing, faceFacing,
-  isWaterAt, fixedDrop, silkOnly,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  def, cube, pillar, axisPlacement, MAT, mat, boxesToModel, stairsBlock,
+  slabBlock, fenceBlock, fenceGateBlock, doorBlock, trapdoorBlock,
+  buttonBlock, pressurePlateBlock, crossBlock, faceFacing, isWaterAt, PROP,
+  getProp, withProp, stateOf, blockOf, RENDER, PASS, TINT, SOUND, TOOL, T,
+  SHAPE, HIDDEN,
 } from './helpers.js';
 import { WOOD_TYPES, MAP, STRIPPED, DIRS, FACING_INDEX, PLANTABLE } from './data.js';
 import { AABB, HORIZONTAL, FACES } from '../../core/math.js';
@@ -247,7 +246,7 @@ function signBlocks(species, tex, o) {
     hasEntity: true,
     maxStack: 16,
     item: `${species}_sign`,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     model: (state) => boxesToModel(wallSignBoxes(state), tex),
     collision: () => SHAPE.NONE,
     selection: wallSignBoxes,

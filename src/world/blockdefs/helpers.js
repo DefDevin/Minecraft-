@@ -11,11 +11,11 @@
 
 import {
   defineBlock, getBlock, id, RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH,
-  box, cubeModel, faceTextures, T, blockOf, PROP, getProp, withProp, stateOf,
+  box, faceTextures, T, blockOf, PROP, getProp, withProp, stateOf,
 } from '../blocks.js';
 import * as SHAPE from '../shapes.js';
 import { AABB, HORIZONTAL, HORIZ_TO_FACE, FACES } from '../../core/math.js';
-import { XP, MAP, DIRS, FACING_INDEX, FACING6 } from './data.js';
+import { MAP, DIRS, FACING_INDEX } from './data.js';
 
 // ---------------------------------------------------------------------------
 // Registration plumbing
@@ -33,6 +33,14 @@ export function def(name, opts = {}, extra = null) {
   if (extra) Object.assign(b, extra);
   return b;
 }
+
+/**
+ * Creative tab for blocks that must never appear in the menu — air, wall
+ * variants, piston heads, portal interiors. `Block` defaults an *undefined*
+ * tab to 'building' via `??`, and `null` reads as undefined for that operator,
+ * so a real sentinel value is the only way to opt out.
+ */
+export const HIDDEN = 'hidden';
 
 const stateCache = new Map();
 /** Cached default state id for a block name — hooks reference blocks by name. */

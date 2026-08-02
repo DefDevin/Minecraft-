@@ -47,7 +47,18 @@ function bakeModel(state) {
   const def = blockOf(state);
   if (!def) { bakedCache.set(state, null); return null; }
   const model = def.modelFor(state);
-  if (!model || model.length === 0) { bakedCache.set(state, null); return null; }
+  if (!model || model.length === 0) {
+    // Cross-shaped plants and fluids describe themselves with texture names
+    // rather than a box model — the mesher builds their geometry procedurally,
+    // so bake a single synthetic face carrying the texture and tint.
+    if (def.render === RENDER.CROSS || def.render === RENDER.FLUID) {
+      baked = bakeSprite(def, state);
+      bakedCache.set(state, baked);
+      return baked;
+    }
+    bakedCache.set(state, null);
+    return null;
+  }
   const faces = [];
   for (const bx of model) {
     for (let f = 0; f < 6; f++) {
@@ -72,6 +83,43 @@ function bakeModel(state) {
   baked = { faces, byDir, pass: def.pass };
   bakedCache.set(state, baked);
   return baked;
+}
+
+/** Resolve a block's texture spec down to a single name for a given role. */
+function pickTexture(spec, role, fallback) {
+  if (!spec) return fallback;
+  if (typeof spec === 'string') return spec;
+  if (Array.isArray(spec)) return spec[3] ?? spec[0] ?? fallback;
+  return spec[role] ?? spec.still ?? spec.top ?? spec.all ?? spec.side ?? fallback;
+}
+
+/** Build the synthetic face list used by CROSS and FLUID render types. */
+function bakeSprite(def, state) {
+  const spec = typeof def.textures === 'function' ? def.textures(state) : def.textures;
+  const mk = (dir, name) => ({
+    dir,
+    layer: layerOf(name),
+    cull: false,
+    tint: def.tint || TINT.NONE,
+    emissive: def.emissive || 0,
+    uvRot: 0,
+    x0: 0, y0: 0, z0: 0, x1: 1, y1: 1, z1: 1,
+    u0: 0, v0: 0, u1: 1, v1: 1,
+  });
+  const faces = [];
+  if (def.render === RENDER.FLUID) {
+    // Fluids need a flat "still" texture on top and a scrolling "flow" on the
+    // sides, matching how Minecraft renders water and lava.
+    const still = pickTexture(spec, 'still', `${def.name}_still`);
+    const flow = pickTexture(spec, 'flow', `${def.name}_flow`);
+    faces.push(mk(3, still));
+    faces.push(mk(5, flow));
+  } else {
+    faces.push(mk(3, pickTexture(spec, 'cross', def.name)));
+  }
+  const byDir = new Array(6).fill(null);
+  for (const f of faces) if (!byDir[f.dir]) byDir[f.dir] = f;
+  return { faces, byDir, pass: def.pass };
 }
 
 /** Drop the bake cache — only needed if textures are regenerated. */

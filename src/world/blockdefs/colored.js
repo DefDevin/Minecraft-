@@ -6,9 +6,8 @@
 
 import {
   def, st, cube, MAT, mat, boxesToModel, paneBlock, isWaterAt, silkOnly,
-  stateLight, faceFacing, lookFacing,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  stateLight, faceFacing, lookFacing, PROP, getProp, withProp, stateOf,
+  blockOf, RENDER, PASS, SOUND, TOOL, TIER, PUSH, T, SHAPE, HIDDEN,
 } from './helpers.js';
 import { COLORS, COLOR_MAP, MAP, DIRS, FACING_INDEX, FACING6 } from './data.js';
 import { AABB, FACES, HORIZONTAL } from '../../core/math.js';
@@ -319,7 +318,7 @@ function bannerBlocks(color) {
     maxStack: 16,
     push: PUSH.DESTROY,
     item: `${color}_banner`,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: `${color}_wool`,
     model: () => [],
     collision: () => SHAPE.NONE,

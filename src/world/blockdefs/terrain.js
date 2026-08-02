@@ -6,9 +6,8 @@
 
 import {
   def, st, cube, pillar, axisPlacement, MAT, mat, boxesToModel, oreDrop,
-  fixedDrop, silkOnly, stateLight, NO_MODEL,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  fixedDrop, silkOnly, stateLight, NO_MODEL, PROP, getProp, withProp,
+  blockOf, RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE, HIDDEN,
 } from './helpers.js';
 import { XP, MAP } from './data.js';
 import { AABB } from '../../core/math.js';
@@ -43,7 +42,7 @@ function registerTechnical() {
     selection: () => SHAPE.NONE,
     drops: () => [],
     item: null,
-    creativeTab: null,
+    creativeTab: HIDDEN,
   };
   // Registered first — `air.defaultState` must be 0.
   def('air', airOpts, { isAir: true, noConnect: true });
@@ -607,7 +606,7 @@ function registerIceAndSnow() {
     textures: (state) => `frosted_ice_${getProp(state, 'age')}`,
     randomTick: true,
     drops: () => [],
-    creativeTab: null,
+    creativeTab: HIDDEN,
     onRandomTick(world, x, y, z, state, random) {
       const age = getProp(state, 'age');
       if (age < 3) { world.setBlock(x, y, z, withProp(state, 'age', age + 1)); return; }
@@ -706,7 +705,7 @@ function registerFluids() {
     selection: () => SHAPE.NONE,
     drops: () => [],
     item: 'water_bucket',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     onScheduledTick(world, x, y, z, state) {
       world.game?.fluids?.tick?.(world, x, y, z, state);
     },
@@ -739,7 +738,7 @@ function registerFluids() {
     selection: () => SHAPE.NONE,
     drops: () => [],
     item: 'lava_bucket',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     randomTick: true,
     onScheduledTick(world, x, y, z, state) {
       world.game?.fluids?.tick?.(world, x, y, z, state);

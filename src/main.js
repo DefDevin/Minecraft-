@@ -245,6 +245,8 @@ function registerFallbackTextures() {
         }
       }
     }
+    // Plants and fluids have no box model; their textures live on the block.
+    collectDeclaredTextures(b, need);
   }
   for (const item of itemsByName.values()) {
     if (item.texture) need.add(item.texture);
@@ -263,6 +265,29 @@ function registerFallbackTextures() {
     registerTexture(name, (px, rng) => paintGeneric(px, rng, name));
   }
   if (missing > 0) console.warn(`[textures] ${missing} fallback textures generated`);
+}
+
+/**
+ * Gather texture names a block declares directly (rather than through a model).
+ * The spec may be a string, a six-entry array, or an object of named faces, and
+ * it may be a function of the block state.
+ */
+function collectDeclaredTextures(block, out) {
+  const specs = [];
+  if (typeof block.textures === 'function') {
+    const step = Math.max(1, Math.ceil(block.stateCount / 12));
+    for (let i = 0; i < block.stateCount; i += step) {
+      try { specs.push(block.textures(block.base + i)); } catch { /* state-specific */ }
+    }
+  } else if (block.textures) {
+    specs.push(block.textures);
+  }
+  for (const spec of specs) {
+    if (!spec) continue;
+    if (typeof spec === 'string') out.add(spec);
+    else if (Array.isArray(spec)) { for (const t of spec) if (typeof t === 'string') out.add(t); }
+    else for (const t of Object.values(spec)) if (typeof t === 'string') out.add(t);
+  }
 }
 
 /** A plausible stone-ish texture derived from the name, so nothing looks broken. */

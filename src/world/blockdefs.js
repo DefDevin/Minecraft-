@@ -44,7 +44,12 @@ export {
 /** Frozen array of every registered block name, in registration order. */
 export let BLOCK_NAMES = Object.freeze([]);
 
-/** Blocks grouped by creative tab, filled by registerAllBlocks(). */
+/**
+ * Blocks grouped by creative tab, filled by registerAllBlocks().
+ * The 'hidden' tab holds blocks that exist only as part of another block —
+ * wall signs, piston heads, portal interiors, potted plants — and must not be
+ * offered in the creative menu.
+ */
 export const CREATIVE_TABS = {};
 
 let registered = false;

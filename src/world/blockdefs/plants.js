@@ -7,14 +7,13 @@
 
 import {
   def, st, cube, pillar, axisPlacement, MAT, mat, boxesToModel, crossBlock,
-  isWaterAt, fixedDrop, silkOnly, oreDrop, stateLight, NO_MODEL,
-  faceFacing, lookFacing,
-  PROP, getProp, withProp, stateOf, blockOf,
-  RENDER, PASS, TINT, SOUND, TOOL, TIER, PUSH, T, SHAPE,
+  isWaterAt, fixedDrop, silkOnly, oreDrop, stateLight, NO_MODEL, faceFacing,
+  PROP, getProp, withProp, stateOf, blockOf, RENDER, PASS, TINT, SOUND, TOOL,
+  PUSH, T, SHAPE, HIDDEN,
 } from './helpers.js';
 import { getBlock } from '../blocks.js';
 import {
-  XP, MAP, DIRS, FACING_INDEX, FACING6, POTTED, PLANTABLE, NYLIUM_LIKE,
+  XP, MAP, DIRS, FACING_INDEX, POTTED, PLANTABLE, NYLIUM_LIKE,
   SUGAR_CANE_BASE,
 } from './data.js';
 import { plantableBelow } from './wood.js';
@@ -190,7 +189,7 @@ function registerWaterPlants() {
     flammable: 0,
     burnTime: 0,
     item: 'kelp',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     canSurvive: (world, x, y, z) => {
       const below = world.getBlockName(x, y - 1, z);
       return below === 'kelp_plant' || T.solid[world.getBlock(x, y - 1, z)] === 1;
@@ -477,7 +476,7 @@ function hangingVine(tipName, bodyName, dir, color) {
     flammable: 0,
     burnTime: 0,
     item: tipName,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     canSurvive(world, x, y, z, state) {
       const anchor = world.getBlock(x, y - dir, z);
       const ad = blockOf(anchor);
@@ -627,7 +626,7 @@ function registerCaveFlora() {
     flammable: 0,
     burnTime: 0,
     item: 'glow_berries',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: (state) => (getProp(state, 'berries') ? 'cave_vines_plant_lit' : 'cave_vines_plant'),
     canSurvive: (world, x, y, z) => {
       const above = world.getBlockName(x, y + 1, z);
@@ -702,7 +701,7 @@ function registerDripleaf() {
     opaque: false,
     push: PUSH.DESTROY,
     item: 'big_dripleaf',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: 'big_dripleaf_stem',
     model: () => boxesToModel([new AABB(5 / 16, 0, 5 / 16, 11 / 16, 1, 11 / 16)],
       'big_dripleaf_stem'),
@@ -877,7 +876,7 @@ function registerGrowables() {
     mapColor: MAP.plant,
     randomTick: true,
     item: 'bamboo',
-    creativeTab: null,
+    creativeTab: HIDDEN,
     canSurvive: (world, x, y, z) => {
       const below = world.getBlockName(x, y - 1, z);
       return PLANTABLE.has(below) || below === 'sand' || below === 'red_sand' ||
@@ -1178,7 +1177,7 @@ function stemBlocks(gourd) {
     opaque: false,
     push: PUSH.DESTROY,
     item: `${gourd}_seeds`,
-    creativeTab: null,
+    creativeTab: HIDDEN,
     textures: () => `attached_${gourd}_stem`,
     model: NO_MODEL,
     collision: () => SHAPE.NONE,
@@ -1312,7 +1311,7 @@ function registerFlowerPots() {
     def(name, Object.assign({}, potMat, {
       textures: 'flower_pot',
       item: 'flower_pot',
-      creativeTab: null,
+      creativeTab: HIDDEN,
       model: () => boxesToModel(SHAPE.flowerPot, 'flower_pot'),
       drops: () => [{ item: 'flower_pot', count: 1 }, { item: source, count: 1 }],
       onUse(world, x, y, z) {
