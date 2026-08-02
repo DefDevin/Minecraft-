@@ -17,7 +17,7 @@
 import { T, blockOf, blocksByName, RENDER, PASS, TINT } from '../world/blocks.js';
 import { layerOf } from './texgen.js';
 import { FACES } from '../core/math.js';
-import { MIN_Y, SECTION_HEIGHT, CHUNK_SIZE } from '../world/chunk.js';
+import { MIN_Y, MAX_Y, SECTION_HEIGHT, CHUNK_SIZE } from '../world/chunk.js';
 
 export const FLOATS_PER_VERTEX = 8;
 export const VERTEX_BYTES = FLOATS_PER_VERTEX * 4;
@@ -189,7 +189,13 @@ const WHITE = 0xffffffff;
 /** Blended tint colour for a block column, by TINT type. */
 function tintColorFor(world, x, z, tintType) {
   if (tintType === TINT.NONE) return WHITE;
-  const chunk = world.getChunkAt(x, z);
+  // Reuse the neighbourhood the mesher already resolved rather than hashing a
+  // chunk key for every tinted face.
+  const cxi = (x >> 4) - (meshOx >> 4) + 1;
+  const czi = (z >> 4) - (meshOz >> 4) + 1;
+  const chunk = (cxi >= 0 && cxi < 3 && czi >= 0 && czi < 3)
+    ? nbChunks[czi * 3 + cxi]
+    : world.getChunkAt(x, z);
   if (!chunk) return WHITE;
   const cache = chunkTints(world, chunk);
   const i = (((z & 15) * 16) + (x & 15)) * 3;
@@ -306,27 +312,59 @@ const NB2 = NB * NB;
 const nbBlocks = new Uint16Array(NB * NB * NB);
 const nbSky = new Uint8Array(NB * NB * NB);
 const nbLight = new Uint8Array(NB * NB * NB);
+/** The 3x3 chunk neighbourhood around the section being meshed. */
+const nbChunks = new Array(9).fill(null);
 
 const nbIndex = (x, y, z) => ((y + PAD) * NB2) + ((z + PAD) * NB) + (x + PAD);
 
 function fillNeighbourhood(world, ox, oy, oz) {
-  let anySolid = false;
+  // Resolve the 3x3 chunk neighbourhood once. Going through world.getBlock for
+  // each of the 5832 cells means 5832 string-keyed map lookups per section per
+  // channel, which dominated the mesher's cost.
+  const cx0 = ox >> 4, cz0 = oz >> 4;
+  for (let dz = 0; dz < 3; dz++) {
+    for (let dx = 0; dx < 3; dx++) {
+      nbChunks[dz * 3 + dx] = world.getChunkAt((cx0 + dx - 1) * 16, (cz0 + dz - 1) * 16);
+    }
+  }
+  const hasSky = world.hasSkylight !== false;
+
   for (let y = -PAD; y < SECTION_HEIGHT + PAD; y++) {
     const wy = oy + y;
+    const inRange = wy >= MIN_Y && wy <= MAX_Y;
+    const si = inRange ? (wy - MIN_Y) >> 4 : -1;
+    const ly = (wy - MIN_Y) & 15;
     for (let z = -PAD; z < SECTION_HEIGHT + PAD; z++) {
       const wz = oz + z;
+      const czi = (wz >> 4) - cz0 + 1;
+      const lz = wz & 15;
       for (let x = -PAD; x < SECTION_HEIGHT + PAD; x++) {
         const i = nbIndex(x, y, z);
         const wx = ox + x;
-        const st = world.getBlock(wx, wy, wz);
-        nbBlocks[i] = st;
-        if (st !== 0) anySolid = true;
-        nbSky[i] = world.getSkyLight(wx, wy, wz);
-        nbLight[i] = world.getBlockLight(wx, wy, wz);
+        const chunk = nbChunks[czi * 3 + (wx >> 4) - cx0 + 1];
+        if (!chunk || !inRange) {
+          nbBlocks[i] = 0;
+          // Outside the loaded area, assume open sky so chunk edges are not
+          // ringed with artificial darkness while neighbours stream in.
+          nbSky[i] = (hasSky && !inRange && wy > MAX_Y) ? 15 : (chunk ? 0 : (hasSky ? 15 : 0));
+          nbLight[i] = 0;
+          continue;
+        }
+        const lx = wx & 15;
+        const section = chunk.sections[si];
+        if (!section) {
+          nbBlocks[i] = 0;
+          nbSky[i] = hasSky && chunk.lightHeightmap[lz * 16 + lx] < wy ? 15 : 0;
+          nbLight[i] = 0;
+          continue;
+        }
+        const li = (ly << 8) | (lz << 4) | lx;
+        nbBlocks[i] = section.blocks ? section.blocks[li] : section.uniform;
+        nbSky[i] = section.skyLight ? section.skyLight[li] : section.uniformSky;
+        nbLight[i] = section.blockLight ? section.blockLight[li] : 0;
       }
     }
   }
-  return anySolid;
 }
 
 // ---------------------------------------------------------------------------
@@ -468,15 +506,15 @@ function greedyPass(mb, f) {
   const uAxis = axis === 0 ? 2 : 0;
   const vAxis = axis === 1 ? 2 : 1;
 
-  const pos = [0, 0, 0];
-
   for (let slice = 0; slice < S; slice++) {
     maskUsed.fill(0);
     let any = false;
     for (let v = 0; v < S; v++) {
       for (let u = 0; u < S; u++) {
-        pos[axis] = slice; pos[uAxis] = u; pos[vAxis] = v;
-        const x = pos[0], y = pos[1], z = pos[2];
+        // axis 0 -> (slice, v, u), axis 1 -> (u, slice, v), axis 2 -> (u, v, slice)
+        const x = axis === 0 ? slice : u;
+        const y = axis === 1 ? slice : v;
+        const z = axis === 2 ? slice : (axis === 0 ? u : v);
         const i = nbIndex(x, y, z);
         const st = nbBlocks[i];
         const m = v * S + u;
@@ -824,6 +862,8 @@ export function meshSection(world, chunk, sy) {
     return null;
   }
 
+  if (isFullyEnclosed(world, chunk, sy, section)) return null;
+
   meshWorld = world; meshOx = ox; meshOz = oz;
   fillNeighbourhood(world, ox, oy, oz);
   for (const b of builders) b.reset();
@@ -858,6 +898,27 @@ export function meshSection(world, chunk, sy) {
   const translucent = builders[PASS.TRANSLUCENT].extract();
   if (!solid && !cutout && !translucent) return null;
   return { solid, cutout, translucent, origin: [ox, oy, oz] };
+}
+
+/**
+ * True when a section is a solid block of one opaque state and every one of its
+ * six neighbours is too — no face of it can ever be visible, so meshing it is
+ * pure waste. Deep underground this skips the majority of sections.
+ */
+function isFullyEnclosed(world, chunk, sy, section) {
+  if (section.blocks !== null) return false;
+  if (!T.opaque[section.uniform]) return false;
+  const uniformOpaque = (c, i) => {
+    if (i < 0 || i >= 24) return false;
+    const s2 = c?.sections[i];
+    return !!s2 && s2.blocks === null && T.opaque[s2.uniform] === 1;
+  };
+  if (!uniformOpaque(chunk, sy - 1) || !uniformOpaque(chunk, sy + 1)) return false;
+  for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+    const n = world.getChunkAt((chunk.cx + dx) * 16, (chunk.cz + dz) * 16);
+    if (!uniformOpaque(n, sy)) return false;
+  }
+  return true;
 }
 
 /** Total triangles the last mesh produced — used by the debug overlay. */
