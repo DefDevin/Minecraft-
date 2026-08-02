@@ -2730,6 +2730,283 @@ function registerPlants() {
   attachedStem('attached_melon_stem');
 }
 
+// ---------------------------------------------------------------------------
+// Crops
+// ---------------------------------------------------------------------------
+
+/**
+ * A crop row: four sprigs whose height and colour track `t` (0 = just planted,
+ * 1 = ready to harvest). Vanilla crops are drawn on cross quads, so the tile is
+ * transparent apart from the sprigs.
+ */
+function paintCrop(px, rng, t, o) {
+  const cols = o.cols ?? [1, 5, 9, 13];
+  const h = Math.round(lerp(o.minH ?? 3, o.maxH ?? 14, t));
+  const stem = mixHex(o.young ?? P.plant.stem, o.ripe ?? P.plant.stem, t);
+  const dark = shade(stem, -0.28);
+  for (const x of cols) {
+    for (let k = 0; k < h; k++) {
+      const y = S - 1 - k;
+      px.set(x, y, stem);
+      px.set(x + 1, y, dark);
+    }
+    // Side leaves appear as the plant fills out.
+    const leaves = Math.floor(t * 3);
+    for (let i = 0; i < leaves; i++) {
+      const y = S - 2 - Math.floor((i + 1) * (h / (leaves + 1)));
+      const dir = i % 2 === 0 ? -1 : 1;
+      setw(px, x + dir, y, stem);
+      setw(px, x + dir * 2, y - 1, dark);
+    }
+    if (o.head && t > 0.65) o.head(px, rng, x, S - h);
+  }
+  px.grain(rng, 0.04);
+}
+
+function registerCrops() {
+  for (let stage = 0; stage <= 7; stage++) {
+    tex(`wheat_stage${stage}`, (px, rng) => {
+      const t = stage / 7;
+      paintCrop(px, rng, t, {
+        young: P.plant.wheatYoung, ripe: P.plant.wheat, minH: 3, maxH: 15,
+        head: (p, r, x, top) => {
+          // Grain heads: paired kernels up the last few pixels.
+          for (let k = 0; k < 4; k++) {
+            p.set(x, top + k, P.plant.wheat);
+            p.set(x + 1, top + k, shade(P.plant.wheat, -0.3));
+            if (k % 2 === 0) setw(p, x - 1, top + k, shade(P.plant.wheat, 0.16));
+          }
+        },
+      });
+    });
+  }
+  for (let stage = 0; stage <= 3; stage++) {
+    const t = (stage + 1) / 4;
+    tex(`carrots_stage${stage}`, (px, rng) => {
+      paintCrop(px, rng, t, { young: 0x4a7a2c, ripe: P.plant.carrotTop, minH: 4, maxH: 12 });
+      if (stage === 3) {
+        for (const x of [1, 5, 9, 13]) {
+          px.set(x, S - 1, P.plant.carrot);
+          px.set(x + 1, S - 1, shade(P.plant.carrot, -0.25));
+          px.set(x, S - 2, shade(P.plant.carrot, 0.15));
+        }
+      }
+    });
+    tex(`potatoes_stage${stage}`, (px, rng) => {
+      paintCrop(px, rng, t, { young: 0x4a7a2c, ripe: P.plant.potatoTop, minH: 4, maxH: 11 });
+      if (stage === 3) {
+        for (const x of [2, 10]) {
+          px.set(x, S - 1, P.plant.potato);
+          px.set(x + 1, S - 1, shade(P.plant.potato, -0.25));
+        }
+      }
+    });
+    tex(`beetroots_stage${stage}`, (px, rng) => {
+      paintCrop(px, rng, t, { young: 0x4a8a34, ripe: P.plant.beetTop, minH: 3, maxH: 9 });
+      if (stage === 3) {
+        for (const x of [1, 5, 9, 13]) {
+          px.set(x, S - 1, P.plant.beet);
+          px.set(x + 1, S - 1, shade(P.plant.beet, -0.3));
+        }
+      }
+    });
+  }
+  for (let stage = 0; stage <= 2; stage++) {
+    tex(`nether_wart_stage${stage}`, (px, rng) => {
+      const t = (stage + 1) / 3;
+      paintCrop(px, rng, t, {
+        young: 0x7a2424, ripe: P.nether.netherWart, minH: 4, maxH: 12,
+        head: (p, r, x, top) => {
+          for (let k = 0; k < 3; k++) {
+            p.set(x, top + k, 0xb02a2a);
+            setw(p, x - 1, top + k + 1, 0x6f1414);
+            setw(p, x + 2, top + k, 0x6f1414);
+          }
+        },
+      });
+      if (stage === 2) px.speckle(rng, 8, 0xd8483a, 0.5);
+    });
+  }
+  for (let stage = 0; stage <= 2; stage++) {
+    tex(`torchflower_crop_stage${stage}`, (px, rng) => {
+      const t = (stage + 1) / 3;
+      paintCrop(px, rng, t, {
+        young: 0x4a7a2c, ripe: 0x5f9c34, minH: 4, maxH: 11, cols: [3, 11],
+      });
+      if (stage === 2) {
+        for (const x of [3, 11]) {
+          px.set(x, 4, P.flower.torchflower);
+          px.set(x + 1, 4, P.flower.torchflowerCore);
+          px.set(x, 3, shade(P.flower.torchflower, 0.2));
+        }
+      }
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Animated fluids and flames
+// ---------------------------------------------------------------------------
+
+/**
+ * Noise fields shared by every frame of an animation. Each frame gets its own
+ * `Random`, so per-frame noise would boil; sampling one fixed field with a
+ * moving offset is what makes water scroll instead of flicker.
+ */
+const fields = new Map();
+function sharedField(key, octaves = 3, freq = 4) {
+  let f = fields.get(key);
+  if (!f) {
+    f = fbm2(new Random(hashString(`field:${key}`)), S, octaves, freq);
+    fields.set(key, f);
+  }
+  return f;
+}
+
+/** Sample a field at a wrapped, fractional y — bilinear so scrolling is smooth. */
+function sampleY(field, x, y) {
+  const yy = ((y % S) + S) % S;
+  const y0 = Math.floor(yy), y1 = (y0 + 1) % S, f = yy - y0;
+  return lerp(field[y0 * S + w(x)], field[y1 * S + w(x)], f);
+}
+
+/**
+ * One frame of a scrolling fluid surface. `speed` must be a whole number of
+ * tiles per cycle or the animation will not loop.
+ */
+function fluidFrame(px, frame, total, o) {
+  const a = sharedField(`${o.key}a`, 3, o.freq ?? 4);
+  const b = sharedField(`${o.key}b`, 2, o.freq2 ?? 7);
+  const t = frame / total;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const va = sampleY(a, x, y + t * S * (o.speed ?? 1));
+      const vb = sampleY(b, x, y - t * S * (o.speed2 ?? 1));
+      let v = va * 0.62 + vb * 0.38;
+      v += Math.sin((x / S) * Math.PI * 2 * (o.waves ?? 2) + t * Math.PI * 2) * (o.amp ?? 0.07);
+      v = clamp((v - 0.5) * (o.contrast ?? 1.5) + 0.5, 0, 1);
+      px.set(x, y, mixHex(o.dark, o.light, v));
+    }
+  }
+  if (o.hot != null) {
+    // Bright crests riding on top of the swell.
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const va = sampleY(a, x, y + t * S * (o.speed ?? 1));
+        if (va > (o.hotThreshold ?? 0.72)) {
+          px.blend(x, y, o.hot, clamp((va - 0.72) * 4, 0, 1));
+        }
+      }
+    }
+  }
+}
+
+function registerFluids() {
+  // Water is multiplied by the biome water colour, so the texture itself is a
+  // pale blue-white; the blue you see in game comes from the tint.
+  registerAnimated('water_still', 32, (px, rng, frame, total) => {
+    fluidFrame(px, frame, total, {
+      key: 'water', dark: P.liquid.waterDeep, light: P.liquid.water,
+      speed: 1, speed2: 1, waves: 2, amp: 0.06, contrast: 1.35,
+      hot: P.liquid.waterFoam, hotThreshold: 0.78,
+    });
+  }, 2);
+  registerAnimated('water_flow', 32, (px, rng, frame, total) => {
+    fluidFrame(px, frame, total, {
+      key: 'waterflow', dark: P.liquid.waterDeep, light: P.liquid.water,
+      freq: 3, freq2: 8, speed: 3, speed2: 2, waves: 3, amp: 0.1, contrast: 1.7,
+      hot: P.liquid.waterFoam, hotThreshold: 0.74,
+    });
+    // Streaks that read as falling water rather than a moving surface.
+    const t = frame / total;
+    for (let x = 0; x < S; x += 3) {
+      for (let y = 0; y < S; y++) {
+        px.blend(x, w(Math.round(y + t * S * 3)), P.liquid.waterFoam, 0.12);
+      }
+    }
+  }, 1);
+  tex('water_overlay', (px, rng) => {
+    // Flat pane of water for the face touching glass — no waves, they would
+    // fight with the still texture behind them.
+    px.fill(P.liquid.water, 200);
+    noiseOverlay(px, rng, P.liquid.waterDeep, 0.5, 5, 0.5);
+    px.grain(rng, 0.02);
+  });
+
+  registerAnimated('lava_still', 32, (px, rng, frame, total) => {
+    fluidFrame(px, frame, total, {
+      key: 'lava', dark: P.liquid.lavaCool, light: P.liquid.lava,
+      freq: 3, freq2: 5, speed: 1, speed2: 1, waves: 1, amp: 0.09, contrast: 1.6,
+      hot: P.liquid.lavaHot, hotThreshold: 0.62,
+    });
+    // Convection: a few molten cells that pulse over the cycle.
+    const ph = (frame / total) * Math.PI * 2;
+    for (let i = 0; i < 5; i++) {
+      const cx = (i * 3.1 + 1) % S, cy = (i * 5.7 + 2) % S;
+      const r = 1.6 + Math.sin(ph + i) * 0.9;
+      for (let y = -3; y <= 3; y++) {
+        for (let x = -3; x <= 3; x++) {
+          const d = Math.hypot(x, y);
+          if (d > r) continue;
+          blendw(px, cx + x, cy + y, P.liquid.lavaHot, (1 - d / r) * 0.7);
+        }
+      }
+    }
+  }, 3);
+  registerAnimated('lava_flow', 32, (px, rng, frame, total) => {
+    fluidFrame(px, frame, total, {
+      key: 'lavaflow', dark: P.liquid.lavaCool, light: P.liquid.lava,
+      freq: 3, freq2: 6, speed: 2, speed2: 1, waves: 2, amp: 0.12, contrast: 1.8,
+      hot: P.liquid.lavaHot, hotThreshold: 0.6,
+    });
+    const t = frame / total;
+    for (let x = 1; x < S; x += 4) {
+      for (let y = 0; y < S; y++) {
+        px.blend(x, w(Math.round(y + t * S * 2)), P.liquid.lavaHot, 0.2);
+      }
+    }
+  }, 2);
+
+  // --- fire ---------------------------------------------------------------
+  const firePainter = (hot, mid, deep) => (px, rng, frame, total) => {
+    const ph = (frame / total) * Math.PI * 2;
+    for (let x = 0; x < S; x++) {
+      // Each column licks up and down over the cycle.
+      const base = 6 + Math.sin(x * 0.9) * 2.5;
+      const h = Math.round(base + Math.sin(ph * 2 + x * 0.7) * 3 + Math.sin(ph + x * 1.9) * 2);
+      const top = clamp(S - 1 - h, 0, S - 1);
+      for (let y = top; y < S; y++) {
+        const t = (y - top) / Math.max(S - 1 - top, 1);
+        let c = t < 0.28 ? hot : t < 0.6 ? mid : deep;
+        if (y === top) c = mixHex(hot, 0xffffff, 0.35);
+        px.set(x, y, c);
+      }
+      // Detached embers above the flame front.
+      if ((x + frame) % 5 === 0 && top > 1) px.set(x, top - 2, mid, 190);
+    }
+  };
+  registerAnimated('fire_0', 16, firePainter(P.nether.fireHot, P.nether.fire, P.nether.fireDeep), 1);
+  registerAnimated('fire_1', 16, (px, rng, frame, total) => {
+    firePainter(P.nether.fireHot, P.nether.fire, P.nether.fireDeep)(px, rng, (frame + 5) % total, total);
+    px.flipX();
+  }, 1);
+  registerAnimated('soul_fire_0', 16,
+    firePainter(0xd8fbff, P.nether.soulFire, P.nether.soulFireDeep), 1);
+  registerAnimated('campfire_fire', 16, (px, rng, frame, total) => {
+    firePainter(P.nether.fireHot, P.nether.fire, P.nether.fireDeep)(px, rng, frame, total);
+    // Campfire flames sit in the middle of the tile, not edge to edge.
+    for (let y = 0; y < S; y++) {
+      for (const x of [0, 1, 14, 15]) px.set(x, y, 0, 0);
+    }
+  }, 1);
+  registerAnimated('soul_campfire_fire', 16, (px, rng, frame, total) => {
+    firePainter(0xd8fbff, P.nether.soulFire, P.nether.soulFireDeep)(px, rng, frame, total);
+    for (let y = 0; y < S; y++) {
+      for (const x of [0, 1, 14, 15]) px.set(x, y, 0, 0);
+    }
+  }, 1);
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;

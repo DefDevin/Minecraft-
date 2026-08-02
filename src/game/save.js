@@ -687,9 +687,14 @@ export class SaveManager {
       this.savePlayer(),
       this.saveInventory(),
     ]);
-    while (this.dirty.size > 0) {
-      const written = await this.flush({ all: true });
-      if (written === 0) break;
+    // A background flush may already hold the queue; give it a moment rather
+    // than reporting success with chunks still pending.
+    for (let attempt = 0; attempt < 16 && this.dirty.size > 0; attempt++) {
+      if (this.flushing) {
+        await new Promise((resolve) => setTimeout(resolve, 16));
+        continue;
+      }
+      if (await this.flush({ all: true }) === 0) break;
     }
     this.lastAutosave = Date.now();
     return true;
