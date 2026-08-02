@@ -51,7 +51,10 @@ if (!itemdefs.__err) {
   try { itemdefs.registerAllItems?.(); }
   catch (e) { note('ERROR', `itemdefs threw during registration: ${e.message}`); }
   console.log(`items: ${items.itemsByName.size}`);
-  const noItem = blocks.filter((b) => b.item && !items.itemsByName.has(b.item))
+  // Technical blocks (air, portals, wall-mounted variants) legitimately have no
+  // item form; only flag ones a player could actually obtain.
+  const noItem = blocks
+    .filter((b) => b.item && b.render !== RENDER.INVISIBLE && !items.itemsByName.has(b.item))
     .map((b) => b.name);
   if (noItem.length) note('WARN', `${noItem.length} blocks drop an item that is not registered: ${noItem.slice(0, 12).join(', ')}`);
 } else {
