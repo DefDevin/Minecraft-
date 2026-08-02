@@ -1639,6 +1639,247 @@ function registerWood() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Building blocks
+// ---------------------------------------------------------------------------
+
+function registerBuilding() {
+  tex('bricks', (px, rng) => {
+    // Staggered red bricks in pale mortar — four courses of two.
+    paintBrickCourse(px, rng, 0x9b5a44, 0xb0aca2, { rows: 4, perRow: 2, jitter: 0.14 });
+    px.speckle(rng, 18, 0x7d422f, 0.45);
+    px.speckle(rng, 10, 0xb4735c, 0.4);
+    px.grain(rng, 0.04);
+  });
+
+  // --- quartz -------------------------------------------------------------
+  const q = P.stone.quartz, qd = P.stone.quartzDark;
+  tex('quartz_block_side', (px, rng) => {
+    noiseFill(px, rng, q, 0.05, 3, 5);
+    px.grain(rng, 0.035);
+    px.speckle(rng, 16, qd, 0.35);
+    frameBevel(px, 0.1, 0.1);
+  });
+  derive('quartz_block_top', 'quartz_block_side', (px, rng) => px.speckle(rng, 10, 0xffffff, 0.4));
+  derive('quartz_block_bottom', 'quartz_block_side', (px, rng) => { px.scale(0.96); px.speckle(rng, 10, qd, 0.4); });
+  tex('quartz_pillar', (px, rng) => {
+    noiseFill(px, rng, q, 0.04, 2, 4);
+    for (const x of [1, 14]) px.vline(x, 0, S - 1, shade(qd, -0.05));
+    px.rect(2, 0, 12, S, shade(q, 0.03));
+    px.vline(2, 0, S - 1, shade(q, 0.14));
+    px.vline(13, 0, S - 1, shade(qd, -0.02));
+    px.grain(rng, 0.03);
+  });
+  tex('quartz_pillar_top', (px, rng) => {
+    noiseFill(px, rng, q, 0.04, 2, 4);
+    px.circle(7.5, 7.5, 6.4, shade(q, 0.05));
+    px.circle(7.5, 7.5, 6.4, qd, 255, false);
+    px.circle(7.5, 7.5, 3.2, qd, 255, false);
+    px.grain(rng, 0.03);
+  });
+  tex('chiseled_quartz_block', (px, rng) => {
+    noiseFill(px, rng, q, 0.04, 2, 4);
+    px.frame(0, 0, S, S, qd);
+    px.rect(2, 2, 12, 12, shade(q, 0.04));
+    px.bevel(2, 2, 12, 12, 0.18, 0.2);
+    for (const x of [4, 7, 10]) px.vline(x, 4, 11, shade(qd, -0.06));
+    for (const x of [5, 8, 11]) px.vline(x, 4, 11, shade(q, 0.12));
+    px.grain(rng, 0.028);
+  });
+  derive('chiseled_quartz_block_top', 'chiseled_quartz_block', (px) => px.rotate(1));
+  tex('quartz_bricks', (px, rng) => {
+    paintBrickCourse(px, rng, q, qd, { rows: 2, perRow: 2, jitter: 0.05 });
+    px.grain(rng, 0.03);
+  });
+
+  // --- glass --------------------------------------------------------------
+  tex('glass', (px, rng) => paintGlass(px, rng, P.misc.glass, 30, { edge: P.misc.glassEdge }));
+  tex('tinted_glass', (px, rng) => {
+    paintGlass(px, rng, P.misc.tintedGlass, 190, { edge: 0x6f5f6c, edgeAlpha: 230 });
+    px.grain(rng, 0.03);
+  });
+
+  // --- organic building blocks -------------------------------------------
+  tex('hay_block_side', (px, rng) => {
+    noiseFill(px, rng, P.plant.hay, 0.1, 3, 6);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) if (rng.chance(0.3)) px.shadePixel(x, y, -0.12);
+    }
+    // Baling twine.
+    for (const x of [3, 12]) {
+      px.vline(x, 0, S - 1, 0x6f5a12);
+      px.vline(x + 1, 0, S - 1, 0xa08c2a);
+    }
+    px.hline(0, S - 1, 0, shade(P.plant.hay, 0.16));
+    px.hline(0, S - 1, S - 1, P.plant.hayDark);
+    px.grain(rng, 0.06);
+  });
+  tex('hay_block_top', (px, rng) => {
+    noiseFill(px, rng, P.plant.hay, 0.09, 3, 5);
+    // Cut stalk ends.
+    for (let i = 0; i < 40; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      px.set(x, y, rng.chance(0.5) ? P.plant.hayDark : shade(P.plant.hay, 0.2));
+    }
+    px.grain(rng, 0.07);
+    frameBevel(px, 0.08, 0.12);
+  });
+  tex('bone_block_side', (px, rng) => {
+    noiseFill(px, rng, P.misc.bone, 0.05, 2, 4);
+    for (const x of [2, 5, 10, 13]) px.vline(x, 0, S - 1, P.misc.boneDark);
+    for (const x of [3, 11]) px.vline(x, 0, S - 1, 0xf4f2e4);
+    px.hline(0, S - 1, 0, P.misc.boneDark);
+    px.hline(0, S - 1, S - 1, P.misc.boneDark);
+    px.grain(rng, 0.035);
+  });
+  tex('bone_block_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.bone, 0.05, 2, 4);
+    px.circle(7.5, 7.5, 5.6, P.misc.boneDark);
+    px.circle(7.5, 7.5, 4.4, shade(P.misc.bone, 0.05));
+    px.circle(7.5, 7.5, 2.2, 0x9a9482);
+    px.grain(rng, 0.035);
+  });
+  tex('honeycomb_block', (px, rng) => {
+    noiseFill(px, rng, P.plant.honeycomb, 0.07, 2, 4);
+    // A hex-ish cell grid drawn as offset rounded squares.
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 3; col++) {
+        const cx = col * 6 + (row % 2) * 3 + 2, cy = row * 4 + 2;
+        for (let y = -2; y <= 2; y++) {
+          for (let x = -2; x <= 2; x++) {
+            if (Math.abs(x) + Math.abs(y) > 3) continue;
+            setw(px, cx + x, cy + y, Math.abs(x) + Math.abs(y) === 3
+              ? shade(P.plant.honeycomb, -0.3) : shade(P.plant.honeycomb, 0.12));
+          }
+        }
+      }
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('honey_block', (px, rng) => {
+    // Translucent amber with a bright rim.
+    px.rect(0, 0, S, S, P.plant.honey, 205);
+    noiseOverlay(px, rng, 0xffd35c, 0.5, 4, 0.6);
+    px.frame(0, 0, S, S, 0xffdf8a, 235);
+    px.frame(1, 1, 14, 14, 0xc88a12, 200);
+    px.line(3, 6, 6, 3, 0xfff0b8, 220);
+    px.grain(rng, 0.03);
+  });
+  tex('slime_block', (px, rng) => {
+    px.rect(0, 0, S, S, P.plant.slime, 190);
+    noiseOverlay(px, rng, 0x9fdd86, 0.48, 4, 0.7);
+    px.frame(0, 0, S, S, 0x8fd07a, 225);
+    px.frame(3, 3, 10, 10, 0x5c9a48, 150);
+    // The little slime core.
+    px.rect(6, 6, 4, 4, 0x4f8a3c, 210);
+    px.line(4, 7, 6, 5, 0xd8f5c8, 200);
+    px.grain(rng, 0.03);
+  });
+  tex('sponge', (px, rng) => {
+    noiseFill(px, rng, P.plant.sponge, 0.14, 3, 5);
+    // Pores.
+    for (let i = 0; i < 22; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      px.set(x, y, shade(P.plant.sponge, -0.4));
+      if (rng.chance(0.4)) px.set(w(x + 1), y, shade(P.plant.sponge, -0.25));
+    }
+    px.grain(rng, 0.08);
+  });
+  derive('wet_sponge', 'sponge', (px, rng) => {
+    px.tint(0x93a06a, 0.7);
+    px.scale(0.88);
+    px.speckle(rng, 10, 0x4f5c2a, 0.6);
+  });
+  tex('cobweb', (px, rng) => {
+    // Radial silk from the centre plus two connecting rings.
+    const c = P.plant.cobweb;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      px.line(8, 8, Math.round(8 + Math.cos(a) * 8), Math.round(8 + Math.sin(a) * 8), c, 235);
+    }
+    for (const r of [3.2, 6.0]) {
+      for (let i = 0; i < 28; i++) {
+        const a = (i / 28) * Math.PI * 2;
+        px.set(Math.round(8 + Math.cos(a) * r), Math.round(8 + Math.sin(a) * r), c, 190);
+      }
+    }
+    px.set(8, 8, c, 255);
+    px.speckle(rng, 6, c, 0.4);
+  });
+
+  // --- metalwork ----------------------------------------------------------
+  tex('iron_bars', (px, rng) => {
+    paintBars(px, rng, P.misc.iron, { cols: [6, 7, 8, 9] });
+    px.hline(6, 9, 0, P.misc.ironLight);
+    px.hline(6, 9, S - 1, P.misc.ironDark);
+  });
+  tex('chain', (px, rng) => {
+    // Alternating links seen edge-on and face-on.
+    for (let y = 0; y < S; y++) {
+      const link = (y >> 2) % 2 === 0;
+      if (link) {
+        px.set(6, y, P.misc.chain); px.set(9, y, shade(P.misc.chain, -0.3));
+        px.set(7, y, shade(P.misc.chain, 0.25)); px.set(8, y, P.misc.chain);
+      } else {
+        px.set(7, y, shade(P.misc.chain, 0.2)); px.set(8, y, shade(P.misc.chain, -0.2));
+      }
+    }
+    for (const y of [3, 7, 11, 15]) { px.set(6, y, 0x2e3238); px.set(9, y, 0x2e3238); }
+    px.grain(rng, 0.05);
+  });
+  tex('ladder', (px, rng) => {
+    const rail = 0x8a6a3a;
+    for (const x of [2, 3, 12, 13]) {
+      for (let y = 0; y < S; y++) px.set(x, y, x % 2 === 0 ? rail : shade(rail, -0.28));
+    }
+    for (const y of [1, 6, 11]) {
+      px.rect(4, y, 8, 2, shade(rail, 0.12));
+      px.hline(4, 11, y + 1, shade(rail, -0.2));
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('scaffolding_top', (px, rng) => {
+    px.fill(P.misc.scaffold);
+    px.rect(2, 2, 12, 12, 0, 0);
+    px.rect(4, 4, 8, 8, P.misc.scaffold);
+    px.rect(5, 5, 6, 6, 0, 0);
+    px.frame(0, 0, S, S, shade(P.misc.scaffold, -0.28));
+    px.grain(rng, 0.05);
+  });
+  tex('scaffolding_side', (px, rng) => {
+    for (const x of [0, 1, 14, 15]) {
+      for (let y = 0; y < S; y++) px.set(x, y, x % 2 ? shade(P.misc.scaffold, -0.25) : P.misc.scaffold);
+    }
+    px.rect(0, 0, S, 2, P.misc.scaffold);
+    px.rect(0, 14, S, 2, shade(P.misc.scaffold, -0.15));
+    for (let y = 3; y < 13; y += 4) px.hline(2, 13, y, P.misc.scaffoldRope);
+    px.grain(rng, 0.05);
+  });
+  tex('scaffolding_bottom', (px, rng) => {
+    px.fill(shade(P.misc.scaffold, -0.14));
+    for (const g of [3, 7, 11]) {
+      px.hline(0, S - 1, g, P.misc.scaffoldRope);
+      px.vline(g, 0, S - 1, P.misc.scaffoldRope);
+    }
+    px.frame(0, 0, S, S, shade(P.misc.scaffold, -0.32));
+    px.grain(rng, 0.05);
+  });
+
+  // --- dried kelp ---------------------------------------------------------
+  tex('dried_kelp_side', (px, rng) => {
+    noiseFill(px, rng, P.plant.driedKelp, 0.16, 3, 5);
+    for (let y = 2; y < S; y += 4) px.hline(0, S - 1, y, shade(P.plant.driedKelp, -0.3));
+    px.speckle(rng, 16, 0x5a6f3a, 0.4);
+    px.grain(rng, 0.07);
+  });
+  tex('dried_kelp_top', (px, rng) => {
+    noiseFill(px, rng, shade(P.plant.driedKelp, 0.1), 0.14, 3, 5);
+    px.speckle(rng, 24, 0x2a3620, 0.5);
+    px.grain(rng, 0.08);
+  });
+  derive('dried_kelp_bottom', 'dried_kelp_top', (px) => px.scale(0.85));
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;

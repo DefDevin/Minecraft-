@@ -325,6 +325,13 @@ export class Game {
     }
     this.safe('farming', () => this.modules.farming?.tick?.(world));
     this.safe('weather', () => this.weather?.tick?.(world));
+    // Autosave. The manager is built on the first tick — by then the world and
+    // the player exist — and only ever queues work here; the writes themselves
+    // happen from an idle callback.
+    this.safe('autosave', () => {
+      if (this.save === undefined) this.save = this.makeSaveManager();
+      this.save?.tick();
+    });
   }
 
   /**
@@ -1063,6 +1070,9 @@ class ChunkStreamer {
     for (const [key, chunk] of this.world.chunks) {
       const dx = chunk.cx - cx, dz = chunk.cz - cz;
       if (dx * dx + dz * dz <= max2) continue;
+      // Anything the player changed is handed to the save manager before the
+      // chunk goes; it keeps the reference and packs it off the render path.
+      if (chunk.needsSave) this.game.save?.saveChunk?.(chunk, this.world.dimension);
       chunk.dispose(this.game.renderer);
       this.world.unloadChunk(chunk.cx, chunk.cz);
     }
@@ -1136,6 +1146,16 @@ class ChunkStreamer {
   }
 
   generate(chunk) {
+    // A saved chunk beats a generated one. The save manager streams buffers in
+    // ahead of this queue, so the lookup is a cache hit or nothing. Restored
+    // chunks are already decorated — running features over them again would
+    // duplicate their trees and structures — so they rejoin the pipeline at the
+    // lighting stage.
+    if (this.game.save?.loadChunkSync?.(chunk.cx, chunk.cz)) {
+      chunk.status = CHUNK_STATE.DECORATED;
+      this.stats.generated++;
+      return;
+    }
     try {
       this.world.generator.generateChunk(chunk);
     } catch (e) {

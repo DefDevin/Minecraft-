@@ -363,17 +363,20 @@ export function findPath(world, sx, sy, sz, tx, ty, tz, ctx, opts = {}) {
           standCost(world, cx, cy, cz + oz, ctx) < 0) continue;
       }
 
-      for (let dy = 1; dy >= -ctx.maxDrop; dy--) {
+      // Scan the column from a one-block step up down to the biggest safe
+      // drop, and take the first cell the entity could actually stand in.
+      const lowest = diagonal ? 0 : -ctx.maxDrop;
+      const highest = diagonal ? 0 : 1;
+      for (let dy = highest; dy >= lowest; dy--) {
         const ny = cy + dy;
         if (Math.abs(ny - sy) > RY - 1) continue;
         if (dy > 0) {
-          // Jumping needs headroom above the current cell too.
+          // Jumping needs headroom above the cell we are leaving, too.
           if (!passable(world, cx, cy + ctx.height, cz, ctx)) continue;
           if (ctx.aquatic && !isWater(world, nx, ny, nz)) continue;
         }
         const extra = standCost(world, nx, ny, nz, ctx);
         if (extra < 0) continue;
-        if (diagonal && dy !== 0) continue;   // no diagonal jumps or drops
 
         let cost = diagonal ? 1.4142 : 1;
         cost += extra;
@@ -381,13 +384,12 @@ export function findPath(world, sx, sy, sz, tx, ty, tz, ctx, opts = {}) {
         else if (dy < 0) cost += PATH_COST.DROP * -dy;
 
         const idx = cellIndex(nx - sx, ny - sy, nz - sz);
-        if (closed[idx] === gen % 255 + 1) break;
-        const tentative = gScore[cur] + cost;
+        if (closedGen[idx] === gen) break;
         if (stamp[idx] !== gen) {
           stamp[idx] = gen;
-          closed[idx] = 0;
           gScore[idx] = Infinity;
         }
+        const tentative = gScore[cur] + cost;
         if (tentative < gScore[idx]) {
           gScore[idx] = tentative;
           cameFrom[idx] = cur;
@@ -1155,35 +1157,16 @@ export class EatGrassGoal extends Goal {
     const t = this.targetBlock();
     if (!t) return;
     const world = this.mob.world;
-    if (t.tall) world.destroyBlock(t.x, t.y, t.z, false);
-    else {
-      const dirt = world.game?.modules?.blockdefs
-        ? null : null;
-      const b = blockOf(world.getBlock(t.x, t.y, t.z));
-      if (b?.name === 'grass_block') {
-        const dirtState = dirtStateFor(world);
-        if (dirtState != null) world.setBlock(t.x, t.y, t.z, dirtState);
-      }
+    if (t.tall) {
+      world.destroyBlock(t.x, t.y, t.z, false);
+    } else if (blockOf(world.getBlock(t.x, t.y, t.z))?.name === 'grass_block') {
+      const dirt = blocksByName.get('dirt');
+      if (dirt) world.setBlock(t.x, t.y, t.z, dirt.defaultState);
     }
     world.spawnParticles('block_dust', this.mob.x, this.mob.y, this.mob.z, 8);
     this.mob.onAteGrass?.();
   }
 }
-
-let dirtStateCache;
-function dirtStateFor(world) {
-  if (dirtStateCache === undefined) {
-    const { blocksByName } = worldBlocks();
-    dirtStateCache = blocksByName.get('dirt')?.defaultState ?? null;
-  }
-  return dirtStateCache;
-}
-function worldBlocks() {
-  // Late import avoids a cycle at module-evaluation time.
-  return { blocksByName: BLOCKS_BY_NAME };
-}
-let BLOCKS_BY_NAME = new Map();
-export function setBlockLookup(map) { BLOCKS_BY_NAME = map; dirtStateCache = undefined; }
 
 // ---------------------------------------------------------------------------
 // Look goals
