@@ -474,20 +474,23 @@ let registered = false;
 export function registerBlockTextures() {
   if (registered) return;
   registered = true;
-  registerStone();
-  registerOres();
-  registerSoil();
-  registerWood();
-  registerBuilding();
-  registerColored();
-  registerPlants();
-  registerCrops();
-  registerFluids();
-  registerUtility();
-  registerRedstone();
-  registerNether();
-  registerEnd();
-  registerOverlays();
+  // Each group registers independently: a group that fails (or was never
+  // written) costs only its own textures, and the engine paints procedural
+  // fallbacks for whatever is left unregistered.
+  const groups = {
+    stone: registerStone, ores: registerOres, soil: registerSoil,
+    wood: registerWood, building: registerBuilding, colored: registerColored,
+    plants: registerPlants, crops: registerCrops, fluids: registerFluids,
+    utility: registerUtility,
+  };
+  for (const [name, fn] of Object.entries(groups)) {
+    if (typeof fn !== 'function') continue;
+    try {
+      fn();
+    } catch (e) {
+      console.error(`[textures] ${name} group failed:`, e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3005,6 +3008,719 @@ function registerFluids() {
       for (const x of [0, 1, 14, 15]) px.set(x, y, 0, 0);
     }
   }, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Utility blocks, machines and light sources
+// ---------------------------------------------------------------------------
+
+/** Oak planks, the substrate for most of the workstation blocks. */
+function woodBase(px, rng, sp = P.wood.oak, opts = {}) {
+  paintPlanks(px, rng, sp.planks, { rows: opts.rows ?? 4, jitter: 0.1, grain: 0.03 });
+  return sp.planks;
+}
+
+/** A torch: a stick with a burning head, on transparency. */
+function paintTorch(px, rng, flame, glow) {
+  for (let y = 8; y < S; y++) {
+    px.set(7, y, P.misc.torchWood);
+    px.set(8, y, shade(P.misc.torchWood, -0.3));
+  }
+  px.set(7, S - 1, shade(P.misc.torchWood, -0.4));
+  px.rect(7, 6, 2, 2, glow);
+  px.set(7, 5, flame);
+  px.set(8, 5, shade(flame, -0.15));
+  px.set(7, 4, mixHex(flame, 0xffffff, 0.4), 220);
+  px.blend(6, 6, glow, 0.5);
+  px.blend(9, 6, glow, 0.5);
+  px.grain(rng, 0.03);
+}
+
+/** A hanging lantern: iron cage over a glowing core. */
+function paintLantern(px, rng, core, glow) {
+  px.rect(5, 4, 6, 8, 0x4a4038);
+  px.rect(6, 5, 4, 6, core);
+  px.rect(6, 6, 4, 4, glow);
+  px.frame(5, 4, 6, 8, 0x2e2822);
+  for (const y of [5, 8, 10]) px.hline(5, 10, y, 0x5c5048, 150);
+  px.rect(6, 12, 4, 2, 0x4a4038);      // base
+  px.rect(6, 2, 4, 2, 0x4a4038);       // cap
+  px.set(8, 1, 0x5c5048); px.set(8, 0, 0x5c5048);
+  px.blend(4, 7, glow, 0.4); px.blend(11, 7, glow, 0.4);
+  px.grain(rng, 0.03);
+}
+
+function registerUtility() {
+  // --- crafting and storage ----------------------------------------------
+  tex('crafting_table_top', (px, rng) => {
+    const base = woodBase(px, rng);
+    px.frame(0, 0, S, S, shade(base, -0.4));
+    const grid = shade(base, -0.34);
+    for (const g of [1, 6, 11, 15]) {
+      px.hline(1, 14, g, grid);
+      px.vline(g, 1, 14, grid);
+    }
+    for (let gy = 0; gy < 3; gy++) {
+      for (let gx = 0; gx < 3; gx++) px.bevel(1 + gx * 5, 1 + gy * 5, 5, 5, 0.1, 0.14);
+    }
+    px.grain(rng, 0.03);
+  });
+  tex('crafting_table_front', (px, rng) => {
+    const base = woodBase(px, rng);
+    px.rect(2, 3, 12, 10, shade(base, -0.16));
+    px.bevel(2, 3, 12, 10, 0.12, 0.2);
+    // A hammer and a saw hanging on the front.
+    px.rect(4, 5, 2, 6, 0x6a5238);
+    px.rect(3, 4, 4, 2, 0x8a8a8a);
+    px.line(9, 11, 12, 5, 0xb0b0b0);
+    px.line(10, 11, 13, 5, 0x7a6a4a);
+    px.grain(rng, 0.03);
+  });
+  tex('crafting_table_side', (px, rng) => {
+    const base = woodBase(px, rng);
+    px.rect(2, 2, 12, 12, shade(base, -0.12));
+    px.bevel(2, 2, 12, 12, 0.12, 0.18);
+    // Saw blade.
+    px.line(3, 12, 12, 4, 0xb8b8b8);
+    for (let i = 0; i < 8; i++) px.set(4 + i, 12 - i, 0xdcdcdc);
+    px.rect(11, 3, 3, 3, 0x6a4a2a);
+    px.grain(rng, 0.03);
+  });
+  tex('chest', (px, rng) => {
+    noiseFill(px, rng, P.misc.chestWood, 0.09, 2, 4);
+    for (const x of [0, 5, 10, 15]) px.vline(x, 0, S - 1, P.misc.chestDark);
+    px.frame(0, 0, S, S, shade(P.misc.chestDark, -0.3));
+    // Lid seam and iron band.
+    px.rect(0, 5, S, 3, shade(P.misc.chestDark, -0.15));
+    px.hline(0, S - 1, 5, 0x3a2a12);
+    // Latch.
+    px.rect(6, 5, 4, 4, 0x8a8a8a);
+    px.rect(7, 6, 2, 2, P.misc.chestLatch);
+    px.set(7, 7, 0x3a3a3a);
+    px.grain(rng, 0.05);
+  });
+  tex('ender_chest', (px, rng) => {
+    noiseFill(px, rng, P.misc.enderChest, 0.16, 3, 4);
+    for (const x of [0, 5, 10, 15]) px.vline(x, 0, S - 1, 0x0f1a1a);
+    px.frame(0, 0, S, S, 0x0a1212);
+    px.rect(0, 5, S, 3, 0x142020);
+    px.rect(6, 5, 4, 4, 0x2a3a3a);
+    px.rect(7, 6, 2, 2, P.misc.enderPearl);
+    px.blend(7, 6, 0xa8fff0, 0.6);
+    px.speckle(rng, 10, 0x2ad4c0, 0.4);
+    px.grain(rng, 0.04);
+  });
+  tex('barrel_side', (px, rng) => {
+    noiseFill(px, rng, P.wood.spruce.planks, 0.09, 2, 5);
+    for (let x = 0; x < S; x += 3) px.vline(x, 0, S - 1, shade(P.wood.spruce.planks, -0.3));
+    for (let x = 1; x < S; x += 3) px.vline(x, 0, S - 1, shade(P.wood.spruce.planks, 0.12));
+    for (const y of [2, 12]) {
+      px.rect(0, y, S, 2, 0x5c5148);
+      px.hline(0, S - 1, y, 0x8a7f70);
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('barrel_top', (px, rng) => {
+    noiseFill(px, rng, shade(P.wood.spruce.planks, 0.08), 0.08, 2, 4);
+    px.circle(7.5, 7.5, 6.6, shade(P.wood.spruce.planks, 0.04));
+    px.circle(7.5, 7.5, 6.6, 0x5c5148, 255, false);
+    px.hline(1, 14, 7, shade(P.wood.spruce.planks, -0.28));
+    px.vline(7, 1, 14, shade(P.wood.spruce.planks, -0.28));
+    px.rect(6, 6, 4, 4, 0x6a5f52);
+    px.bevel(6, 6, 4, 4, 0.2, 0.24);
+    px.grain(rng, 0.04);
+  });
+  derive('barrel_top_open', 'barrel_top', (px, rng) => {
+    px.circle(7.5, 7.5, 5.2, 0x1a1410);
+    px.circle(7.5, 7.5, 5.2, 0x2e2419, 255, false);
+    px.speckle(rng, 6, 0x3a2e20, 0.5);
+  });
+  derive('barrel_bottom', 'barrel_top', (px) => px.scale(0.86));
+  tex('bookshelf', (px, rng) => {
+    const base = woodBase(px, rng);
+    px.rect(0, 0, S, 3, base);
+    px.rect(0, 13, S, 3, base);
+    px.hline(0, S - 1, 2, shade(base, -0.36));
+    px.hline(0, S - 1, 13, shade(base, -0.36));
+    px.rect(0, 3, S, 10, 0x3a2a18);
+    const spines = [P.misc.bookRed, P.misc.bookGreen, P.misc.bookBlue, P.misc.bookYellow,
+      0x8a5a2a, 0x6a3a8a, 0xb0b0a0];
+    for (const [y0, h] of [[3, 5], [8, 5]]) {
+      let x = 0;
+      while (x < S) {
+        const bw = 1 + rng.int(2);
+        const c = rng.pick(spines);
+        for (let i = 0; i < bw && x + i < S; i++) {
+          for (let y = y0; y < y0 + h - 1; y++) {
+            px.set(x + i, y, i === 0 ? shade(c, 0.18) : c);
+          }
+        }
+        px.set(x, y0, mixHex(c, 0xffffff, 0.3));
+        x += bw + 1;
+      }
+      px.hline(0, S - 1, y0 + h - 1, 0x2a1e10);
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('chiseled_bookshelf_front', (px, rng) => {
+    const base = woodBase(px, rng);
+    px.frame(0, 0, S, S, shade(base, -0.4));
+    // Six slots in two rows of three.
+    for (let ry = 0; ry < 2; ry++) {
+      for (let cx = 0; cx < 3; cx++) {
+        const x0 = 1 + cx * 5, y0 = 1 + ry * 7;
+        px.rect(x0, y0, 4, 6, 0x2e2114);
+        const c = rng.pick([P.misc.bookRed, P.misc.bookGreen, P.misc.bookBlue, P.misc.bookYellow]);
+        px.rect(x0 + 1, y0 + 1, 2, 4, c);
+        px.set(x0 + 1, y0 + 1, mixHex(c, 0xffffff, 0.3));
+        px.frame(x0, y0, 4, 6, shade(base, -0.28));
+      }
+    }
+    px.grain(rng, 0.03);
+  });
+  tex('chiseled_bookshelf_side', (px, rng) => {
+    const base = woodBase(px, rng);
+    px.frame(0, 0, S, S, shade(base, -0.34));
+    px.grain(rng, 0.03);
+  });
+  derive('chiseled_bookshelf_top', 'chiseled_bookshelf_side', (px) => px.rotate(1));
+
+  // --- furnaces -----------------------------------------------------------
+  const furnace = (prefix, body, panel, trimTop) => {
+    tex(`${prefix}_side`, (px, rng) => {
+      paintStoneish(px, rng, body, { grain: 0.05, clusters: 3 });
+      px.frame(0, 0, S, S, shade(body, -0.28));
+    });
+    tex(`${prefix}_top`, (px, rng) => {
+      paintStoneish(px, rng, body, { grain: 0.05, clusters: 3 });
+      px.rect(3, 3, 10, 10, trimTop);
+      px.bevel(3, 3, 10, 10, 0.06, 0.28);
+      px.frame(2, 2, 12, 12, shade(body, 0.14));
+      px.grain(rng, 0.03);
+    });
+    tex(`${prefix}_front`, (px, rng) => {
+      const box = paintMachineFace(px, rng, body, panel);
+      // Cold hearth: a dark arch with a grate.
+      px.rect(box.x0 + 1, box.y0 + 1, box.wd - 2, box.ht - 2, P.misc.furnaceMouth);
+      for (let y = box.y0 + 2; y < box.y0 + box.ht - 1; y += 2) {
+        px.hline(box.x0 + 1, box.x0 + box.wd - 2, y, shade(P.misc.furnaceMouth, 0.22));
+      }
+      px.grain(rng, 0.03);
+    });
+    tex(`${prefix}_front_on`, (px, rng) => {
+      const box = paintMachineFace(px, rng, body, panel);
+      px.rect(box.x0 + 1, box.y0 + 1, box.wd - 2, box.ht - 2, 0x1a1008);
+      // Flames licking up inside the firebox.
+      for (let x = box.x0 + 1; x < box.x0 + box.wd - 1; x++) {
+        const h = 3 + ((x * 7) % 4);
+        for (let k = 0; k < h; k++) {
+          const y = box.y0 + box.ht - 2 - k;
+          px.set(x, y, k === 0 ? 0xffe08a : k < 2 ? P.misc.furnaceFire : 0xc24a10);
+        }
+      }
+      px.blend(box.x0 + 2, box.y0 + 2, 0xff9a2a, 0.35);
+      px.grain(rng, 0.03);
+    });
+  };
+  furnace('furnace', P.misc.furnaceStone, 0x4a4a4a, 0x6a6a6a);
+  furnace('blast_furnace', 0x6a6a6e, 0x3a3a40, 0x8a8a90);
+  furnace('smoker', 0x6f5a3f, 0x3a2a18, 0x8a6f4a);
+  // The smoker is wood-clad; give its sides a log look rather than stone.
+  tex('smoker_side', (px, rng) => {
+    paintBark(px, rng, P.wood.spruce, { knots: 1 });
+    px.frame(0, 0, S, S, shade(P.wood.spruce.barkDark, -0.2));
+  });
+  tex('smoker_top', (px, rng) => {
+    paintLogTop(px, rng, P.wood.spruce);
+    px.rect(5, 5, 6, 6, 0x2e2118);
+    px.bevel(5, 5, 6, 6, 0.05, 0.3);
+  });
+  tex('blast_furnace_top', (px, rng) => {
+    paintStoneish(px, rng, 0x6a6a6e, { grain: 0.05, clusters: 3 });
+    px.rect(3, 3, 10, 10, 0x3a3a40);
+    px.bevel(3, 3, 10, 10, 0.06, 0.3);
+    for (const [x, y] of [[3, 3], [12, 3], [3, 12], [12, 12]]) px.set(x, y, 0xb0b0b8);
+    px.grain(rng, 0.03);
+  });
+
+  // --- workstations -------------------------------------------------------
+  tex('smithing_table_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.smithing, 0.08, 2, 4);
+    px.frame(0, 0, S, S, 0x22222a);
+    px.rect(2, 2, 12, 12, 0x4a4a54);
+    px.bevel(2, 2, 12, 12, 0.16, 0.2);
+    // Hammer marks.
+    px.speckle(rng, 14, 0x2e2e36, 0.5);
+    px.rect(5, 6, 6, 3, 0x6a6a74);
+    px.grain(rng, 0.04);
+  });
+  tex('smithing_table_side', (px, rng) => {
+    paintPlanks(px, rng, P.wood.dark_oak.planks, { rows: 4, grain: 0.03 });
+    px.rect(0, 0, S, 3, P.misc.smithing);
+    px.hline(0, S - 1, 3, 0x22222a);
+    px.grain(rng, 0.03);
+  });
+  tex('smithing_table_front', (px, rng) => {
+    paintPlanks(px, rng, P.wood.dark_oak.planks, { rows: 4, grain: 0.03 });
+    px.rect(0, 0, S, 3, P.misc.smithing);
+    px.hline(0, S - 1, 3, 0x22222a);
+    // Tongs and hammer hung on the front.
+    px.line(4, 6, 4, 12, 0x8a8a92);
+    px.line(6, 6, 6, 12, 0x8a8a92);
+    px.rect(9, 6, 4, 2, 0x6a6a72);
+    px.rect(10, 8, 2, 5, 0x6a4a2a);
+    px.grain(rng, 0.03);
+  });
+  derive('smithing_table_bottom', 'smithing_table_side', (px) => px.scale(0.85));
+  tex('cartography_table_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.paper, 0.05, 2, 4);
+    px.frame(0, 0, S, S, 0xa89a78);
+    // A rough coastline and a marker.
+    px.line(2, 11, 6, 8, 0x7a9c5a);
+    px.line(6, 8, 9, 10, 0x7a9c5a);
+    px.line(9, 10, 13, 6, 0x7a9c5a);
+    px.rect(3, 3, 3, 2, 0x9cb8d8);
+    px.set(11, 12, P.misc.tnt); px.set(12, 12, P.misc.tnt);
+    px.speckle(rng, 12, 0xd0c8ac, 0.4);
+    px.grain(rng, 0.03);
+  });
+  tex('cartography_table_side1', (px, rng) => {
+    paintPlanks(px, rng, P.wood.dark_oak.planks, { rows: 4, grain: 0.03 });
+    px.rect(2, 4, 12, 8, P.misc.paper);
+    px.frame(2, 4, 12, 8, 0xa89a78);
+    px.line(3, 9, 7, 6, 0x7a9c5a);
+    px.line(7, 6, 12, 9, 0x7a9c5a);
+    px.grain(rng, 0.03);
+  });
+  tex('fletching_table_top', (px, rng) => {
+    paintPlanks(px, rng, P.wood.birch.planks, { rows: 4, grain: 0.03 });
+    // Arrow shafts laid out.
+    for (const y of [4, 8, 12]) {
+      px.hline(2, 12, y, 0x8a6a3a);
+      px.set(13, y, 0xd8d8d8); px.set(2, y, 0xe0e0e0);
+      px.set(1, y - 1, 0xe0e0e0); px.set(1, y + 1, 0xe0e0e0);
+    }
+    px.grain(rng, 0.03);
+  });
+  tex('fletching_table_side', (px, rng) => {
+    paintPlanks(px, rng, P.wood.birch.planks, { rows: 4, grain: 0.03 });
+    px.line(3, 12, 12, 3, 0x8a6a3a);
+    px.set(12, 3, 0xd8d8d8);
+    px.grain(rng, 0.03);
+  });
+  tex('loom_top', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 4, grain: 0.03 });
+    px.rect(2, 2, 12, 12, shade(P.wood.oak.planks, -0.14));
+    for (let x = 3; x < 13; x += 2) px.vline(x, 3, 12, P.misc.loomThread);
+    px.frame(2, 2, 12, 12, shade(P.wood.oak.planks, -0.34));
+    px.grain(rng, 0.03);
+  });
+  tex('loom_front', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 4, grain: 0.03 });
+    px.rect(3, 2, 10, 11, 0x8a7050);
+    px.frame(3, 2, 10, 11, shade(P.wood.oak.planks, -0.36));
+    for (let x = 4; x < 12; x += 2) px.vline(x, 3, 11, P.misc.loomThread);
+    px.hline(3, 12, 7, 0xd8c9a0);
+    px.rect(6, 12, 4, 3, 0xb0a880);
+    px.grain(rng, 0.03);
+  });
+  tex('loom_side', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 4, grain: 0.03 });
+    px.vline(4, 0, S - 1, shade(P.wood.oak.planks, -0.3));
+    px.vline(11, 0, S - 1, shade(P.wood.oak.planks, -0.3));
+    px.hline(0, S - 1, 7, P.misc.loomThread);
+    px.grain(rng, 0.03);
+  });
+  tex('lectern_top', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 4, grain: 0.03 });
+    // An open book on a slanted desk.
+    px.rect(2, 4, 12, 8, P.misc.paper);
+    px.vline(8, 4, 11, 0xc0b8a0);
+    px.frame(2, 4, 12, 8, 0x8a6a3a);
+    for (const y of [6, 8, 10]) { px.hline(3, 7, y, 0xb8b0a0); px.hline(9, 13, y, 0xb8b0a0); }
+    px.grain(rng, 0.03);
+  });
+  tex('lectern_sides', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 4, grain: 0.03 });
+    px.rect(5, 0, 6, S, shade(P.wood.oak.planks, -0.16));
+    px.frame(5, 0, 6, S, shade(P.wood.oak.planks, -0.34));
+    px.grain(rng, 0.03);
+  });
+  tex('grindstone', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 4, grain: 0.03 });
+    px.circle(7.5, 7.5, 6.4, P.misc.grindstone);
+    px.circle(7.5, 7.5, 6.4, shade(P.misc.grindstone, -0.35), 255, false);
+    px.circle(7.5, 7.5, 4.0, shade(P.misc.grindstone, 0.1));
+    px.circle(7.5, 7.5, 1.4, 0x4a3a24);
+    px.speckle(rng, 14, shade(P.misc.grindstone, -0.25), 0.4);
+    px.grain(rng, 0.04);
+  });
+  tex('stonecutter_top', (px, rng) => {
+    paintStoneish(px, rng, P.stone.smooth, { clusters: 3 });
+    // The saw slot with a blade poking through.
+    px.rect(7, 1, 2, 14, 0x2e2e2e);
+    for (let y = 2; y < 14; y++) px.set(7 + (y % 2), y, 0xd0d0d0);
+    px.frame(0, 0, S, S, shade(P.stone.smooth, -0.28));
+    px.grain(rng, 0.035);
+  });
+  tex('stonecutter_side', (px, rng) => {
+    paintStoneish(px, rng, P.stone.stone, { clusters: 3 });
+    px.rect(0, 0, S, 3, P.stone.smooth);
+    px.hline(0, S - 1, 3, shade(P.stone.stone, -0.3));
+    px.rect(3, 5, 10, 8, 0x5a5a5a);
+    px.bevel(3, 5, 10, 8, 0.1, 0.2);
+    px.grain(rng, 0.04);
+  });
+  derive('stonecutter_bottom', 'stonecutter_side', (px) => px.scale(0.82));
+  tex('composter_top', (px, rng) => {
+    paintPlanks(px, rng, P.misc.composter, { rows: 4, grain: 0.04 });
+    px.rect(2, 2, 12, 12, 0x2e2216);
+    px.frame(2, 2, 12, 12, shade(P.misc.composter, -0.3));
+    noiseOverlay(px, rng, P.misc.compost, 0.5, 5, 0.7);
+    px.grain(rng, 0.05);
+  });
+  tex('composter_side', (px, rng) => {
+    for (let x = 0; x < S; x += 4) {
+      px.rect(x, 0, 3, S, shade(P.misc.composter, (rng.next() - 0.5) * 0.2));
+      px.vline(x + 3, 0, S - 1, shade(P.misc.composter, -0.4));
+    }
+    px.hline(0, S - 1, 0, shade(P.misc.composter, 0.16));
+    px.hline(0, S - 1, S - 1, shade(P.misc.composter, -0.3));
+    px.grain(rng, 0.05);
+  });
+  derive('composter_bottom', 'composter_side', (px) => px.rotate(1));
+
+  // --- decorative and functional -----------------------------------------
+  tex('note_block', (px, rng) => {
+    noiseFill(px, rng, P.misc.noteBlock, 0.09, 2, 5);
+    px.frame(0, 0, S, S, shade(P.misc.noteBlock, -0.35));
+    for (let i = 0; i < 26; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      px.blend(x, y, P.misc.noteDot, 0.55);
+    }
+    // The quaver.
+    px.rect(4, 9, 3, 3, 0x1a120a);
+    px.vline(7, 4, 11, 0x1a120a);
+    px.line(7, 4, 10, 6, 0x1a120a);
+    px.grain(rng, 0.04);
+  });
+  tex('jukebox_side', (px, rng) => {
+    noiseFill(px, rng, P.misc.jukebox, 0.09, 2, 5);
+    px.rect(0, 0, S, 2, P.misc.jukeboxTop);
+    px.rect(0, 14, S, 2, shade(P.misc.jukebox, -0.28));
+    px.rect(3, 5, 10, 6, shade(P.misc.jukebox, -0.2));
+    px.bevel(3, 5, 10, 6, 0.12, 0.2);
+    px.speckle(rng, 12, P.misc.noteDot, 0.4);
+    px.grain(rng, 0.04);
+  });
+  tex('jukebox_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.jukeboxTop, 0.07, 2, 4);
+    px.frame(0, 0, S, S, shade(P.misc.jukebox, -0.3));
+    px.circle(7.5, 7.5, 5.6, 0x1a1a1a);
+    px.circle(7.5, 7.5, 5.6, 0x3a3a3a, 255, false);
+    px.circle(7.5, 7.5, 2.2, 0xc23a3a);
+    px.circle(7.5, 7.5, 0.8, 0x1a1a1a);
+    px.grain(rng, 0.035);
+  });
+  tex('tnt_side', (px, rng) => {
+    noiseFill(px, rng, P.misc.tnt, 0.07, 2, 4);
+    px.rect(0, 5, S, 6, P.misc.tntBand);
+    px.hline(0, S - 1, 5, 0xb0b0b0);
+    px.hline(0, S - 1, 10, 0xb0b0b0);
+    // "TNT" stencilled on the band.
+    const ink = 0x2a2a2a;
+    const letterT = (x) => { px.hline(x, x + 2, 6, ink); px.vline(x + 1, 6, 9, ink); };
+    letterT(1); letterT(11);
+    px.vline(6, 6, 9, ink); px.vline(9, 6, 9, ink);
+    px.line(6, 6, 9, 9, ink);
+    px.grain(rng, 0.035);
+  });
+  tex('tnt_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.tnt, 0.07, 2, 4);
+    px.circle(7.5, 7.5, 5.4, 0x8f2a1e);
+    px.circle(7.5, 7.5, 5.4, 0xd8a04a, 255, false);
+    // Fuse.
+    px.line(8, 8, 11, 4, 0x6a5a3a);
+    px.set(11, 3, 0xffd45c);
+    px.grain(rng, 0.035);
+  });
+  tex('tnt_bottom', (px, rng) => {
+    noiseFill(px, rng, 0xb0864a, 0.09, 2, 4);
+    px.frame(0, 0, S, S, 0x8a6432);
+    px.speckle(rng, 16, 0x8a6432, 0.4);
+    px.grain(rng, 0.045);
+  });
+  tex('spawner', (px, rng) => {
+    // A cage: bars with gaps you can see the dark interior through.
+    px.fill(P.misc.spawnerDark, 235);
+    for (const x of [0, 4, 8, 12, 15]) px.vline(x, 0, S - 1, P.misc.spawner);
+    for (const y of [0, 4, 8, 12, 15]) px.hline(0, S - 1, y, P.misc.spawner);
+    for (let gy = 0; gy < 4; gy++) {
+      for (let gx = 0; gx < 4; gx++) {
+        for (let y = gy * 4 + 1; y < gy * 4 + 4; y++) {
+          for (let x = gx * 4 + 1; x < gx * 4 + 4; x++) px.set(x, y, 0x0a0d10, 190);
+        }
+      }
+    }
+    for (const [x, y] of [[0, 0], [4, 4], [8, 8], [12, 12], [4, 12], [12, 4]]) {
+      px.blend(x, y, 0x4a5560, 0.7);
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('enchanting_table_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.enchant, 0.14, 3, 4);
+    px.circle(7.5, 7.5, 6.2, 0x3f3350);
+    px.circle(7.5, 7.5, 6.2, P.misc.enchantGem, 255, false);
+    px.circle(7.5, 7.5, 3.6, 0x1e1828);
+    // Glyphs around the ring.
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      px.set(Math.round(7.5 + Math.cos(a) * 4.8), Math.round(7.5 + Math.sin(a) * 4.8), 0xc8b0f0);
+    }
+    px.circle(7.5, 7.5, 1.2, 0xe8dcff);
+    px.grain(rng, 0.04);
+  });
+  tex('enchanting_table_side', (px, rng) => {
+    noiseFill(px, rng, P.misc.enchant, 0.16, 3, 4);
+    px.rect(0, 0, S, 4, P.misc.enchantCloth);
+    px.hline(0, S - 1, 4, 0x6f1a1a);
+    px.hline(0, S - 1, 0, 0xc03a3a);
+    for (let i = 0; i < 6; i++) px.blend(rng.int(S), 6 + rng.int(9), 0x8f6fd8, 0.5);
+    px.grain(rng, 0.05);
+  });
+  tex('enchanting_table_bottom', (px, rng) => {
+    noiseFill(px, rng, 0x241c2c, 0.16, 3, 4);
+    px.speckle(rng, 14, 0x120e18, 0.6);
+    px.grain(rng, 0.05);
+  });
+  tex('brewing_stand', (px, rng) => {
+    // The metal post and arms, on transparency.
+    for (let y = 2; y < S; y++) { px.set(7, y, 0xb0b0b0); px.set(8, y, 0x707070); }
+    px.set(7, 1, 0xd8d8d8); px.set(8, 1, 0x909090);
+    for (const [y, dir] of [[6, -1], [9, 1]]) {
+      for (let k = 1; k <= 4; k++) setw(px, 7 + dir * k, y + (k > 2 ? 1 : 0), 0x9a9a9a);
+    }
+    px.rect(6, 12, 4, 4, 0x8a8a8a);
+    px.set(7, 13, 0xd8b0f0);
+    px.grain(rng, 0.04);
+  });
+  tex('brewing_stand_base', (px, rng) => {
+    paintStoneish(px, rng, P.stone.stone, { clusters: 3 });
+    px.circle(7.5, 7.5, 5.6, 0x5a5a5a);
+    px.circle(7.5, 7.5, 5.6, 0x8a8a8a, 255, false);
+    for (const [x, y] of [[4, 4], [11, 4], [7, 11]]) {
+      px.circle(x, y, 1.6, 0x3a3a3a);
+      px.set(x, y, 0xb07fd8);
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('cauldron_side', (px, rng) => {
+    noiseFill(px, rng, 0x4a4a4a, 0.1, 2, 4);
+    px.rect(0, 0, S, 2, 0x6a6a6a);
+    px.rect(0, 13, S, 3, 0x3a3a3a);
+    for (const x of [2, 13]) px.vline(x, 2, 12, 0x2e2e2e);
+    px.speckle(rng, 14, 0x2e2e2e, 0.5);
+    px.grain(rng, 0.05);
+  });
+  tex('cauldron_top', (px, rng) => {
+    noiseFill(px, rng, 0x4a4a4a, 0.09, 2, 4);
+    px.rect(2, 2, 12, 12, 0x2a2a2a);
+    px.frame(2, 2, 12, 12, 0x6a6a6a);
+    px.frame(0, 0, S, S, 0x5a5a5a);
+    px.grain(rng, 0.04);
+  });
+  derive('cauldron_bottom', 'cauldron_side', (px) => px.scale(0.8));
+  tex('anvil', (px, rng) => {
+    noiseFill(px, rng, P.misc.anvil, 0.1, 2, 4);
+    px.rect(0, 0, S, 2, shade(P.misc.anvil, 0.22));
+    px.rect(0, 13, S, 3, P.misc.anvilDark);
+    for (let i = 0; i < 8; i++) px.blend(rng.int(S), 3 + rng.int(9), P.misc.anvilDark, 0.5);
+    px.grain(rng, 0.05);
+  });
+  tex('anvil_top', (px, rng) => {
+    noiseFill(px, rng, shade(P.misc.anvil, 0.1), 0.08, 2, 4);
+    px.rect(2, 1, 12, 14, P.misc.anvil);
+    px.bevel(2, 1, 12, 14, 0.18, 0.24);
+    px.rect(4, 3, 8, 10, shade(P.misc.anvil, 0.08));
+    px.grain(rng, 0.04);
+  });
+  derive('chipped_anvil_top', 'anvil_top', (px, rng) => crackWalk(px, rng, 2, 7, 0x1a1a1a, 0.8));
+  derive('damaged_anvil_top', 'anvil_top', (px, rng) => crackWalk(px, rng, 5, 10, 0x121212, 0.9));
+  tex('lodestone', (px, rng) => {
+    paintStoneish(px, rng, P.misc.lodestone, { clusters: 3, amp: 0.08 });
+    px.frame(0, 0, S, S, 0x4a4f56);
+    px.rect(3, 3, 10, 10, 0x5f666e);
+    px.bevel(3, 3, 10, 10, 0.18, 0.22);
+    // Chevrons pointing to the middle.
+    for (const [x, y] of [[7, 4], [7, 11]]) {
+      px.set(x, y, 0xd0d8e0); px.set(x + 1, y, 0xd0d8e0);
+      px.set(x - 1, y + (y < 8 ? 1 : -1), 0xd0d8e0);
+      px.set(x + 2, y + (y < 8 ? 1 : -1), 0xd0d8e0);
+    }
+    px.rect(7, 7, 2, 2, 0xa8b8c8);
+    px.grain(rng, 0.04);
+  });
+  tex('conduit', (px, rng) => {
+    noiseFill(px, rng, P.misc.conduit, 0.12, 2, 4);
+    px.frame(0, 0, S, S, shade(P.misc.conduit, -0.35));
+    px.circle(7.5, 7.5, 4.6, 0x3a3020);
+    px.circle(7.5, 7.5, 3.0, P.misc.conduitEye);
+    px.circle(7.5, 7.5, 1.4, 0x2a1a08);
+    px.blend(6, 6, 0xffe8a0, 0.6);
+    px.grain(rng, 0.04);
+  });
+  tex('beacon', (px, rng) => {
+    noiseFill(px, rng, 0x1a1424, 0.2, 3, 4);
+    px.rect(2, 2, 12, 12, 0x2e2a3a);
+    px.frame(2, 2, 12, 12, 0x4a4460);
+    px.rect(4, 4, 8, 8, P.misc.beacon);
+    px.bevel(4, 4, 8, 8, 0.3, 0.2);
+    px.rect(6, 6, 4, 4, P.misc.beaconGlass);
+    px.blend(6, 6, 0xffffff, 0.5);
+    px.grain(rng, 0.03);
+  });
+  tex('sea_lantern', (px, rng) => {
+    noiseFill(px, rng, P.misc.seaLantern, 0.08, 2, 4);
+    // A grid of brighter prismarine cells.
+    for (const [x, y, s] of [[1, 1, 6], [9, 1, 6], [1, 9, 6], [9, 9, 6]]) {
+      px.rect(x, y, s, s, P.misc.seaLanternGlow);
+      px.frame(x, y, s, s, shade(P.misc.seaLantern, -0.2));
+    }
+    px.rect(6, 6, 4, 4, 0xffffff);
+    px.speckle(rng, 12, 0xc8e8dc, 0.4);
+    px.grain(rng, 0.03);
+  });
+  tex('daylight_detector_top', (px, rng) => {
+    noiseFill(px, rng, 0x2e3a4a, 0.1, 2, 4);
+    px.rect(1, 1, 14, 14, 0x1e2a3a, 220);
+    // The glass pane over the photocell.
+    for (let y = 2; y < 14; y += 3) px.hline(2, 13, y, 0x6f9cc8, 160);
+    px.frame(0, 0, S, S, 0x7a6a4a);
+    px.line(3, 4, 6, 2, 0xb0d8ff, 200);
+    px.grain(rng, 0.03);
+  });
+  tex('daylight_detector_side', (px, rng) => {
+    paintPlanks(px, rng, P.wood.oak.planks, { rows: 3, grain: 0.03 });
+    px.rect(0, 0, S, 4, 0x2e3a4a);
+    px.hline(0, S - 1, 4, 0x1a2028);
+    px.hline(0, S - 1, 0, 0x6f9cc8);
+    px.rect(0, 11, S, 5, P.stone.stone);
+    px.grain(rng, 0.04);
+  });
+
+  // --- respawn anchor -----------------------------------------------------
+  tex('respawn_anchor_bottom', (px, rng) => {
+    noiseFill(px, rng, P.stone.blackstone, 0.16, 3, 4);
+    px.speckle(rng, 14, P.stone.blackstoneDark, 0.5);
+    px.grain(rng, 0.05);
+  });
+  tex('respawn_anchor_top_off', (px, rng) => {
+    noiseFill(px, rng, P.misc.respawnAnchor, 0.14, 3, 4);
+    px.rect(3, 3, 10, 10, 0x1a1428);
+    px.frame(3, 3, 10, 10, 0x3a3055);
+    px.grain(rng, 0.05);
+  });
+  tex('respawn_anchor_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.respawnAnchor, 0.14, 3, 4);
+    px.rect(3, 3, 10, 10, 0x2a1a4a);
+    px.frame(3, 3, 10, 10, P.misc.respawnAnchorGlow);
+    px.rect(6, 6, 4, 4, 0xe89bff);
+    px.blend(7, 7, 0xffffff, 0.6);
+    px.grain(rng, 0.04);
+  });
+  for (let charge = 0; charge <= 4; charge++) {
+    tex(`respawn_anchor_side${charge}`, (px, rng) => {
+      noiseFill(px, rng, P.misc.respawnAnchor, 0.14, 3, 4);
+      px.speckle(rng, 12, 0x150f22, 0.5);
+      // The glowing crystal window fills from the bottom as it charges.
+      px.rect(4, 3, 8, 10, 0x15102a);
+      px.frame(4, 3, 8, 10, 0x3a3055);
+      const filled = Math.round((charge / 4) * 8);
+      for (let k = 0; k < filled; k++) {
+        const y = 12 - k;
+        px.hline(5, 10, y, k === filled - 1 ? 0xe89bff : P.misc.respawnAnchorGlow);
+      }
+      if (charge > 0) px.blend(5, 12, 0xffffff, 0.4);
+      px.grain(rng, 0.04);
+    });
+  }
+
+  // --- light sources ------------------------------------------------------
+  tex('torch', (px, rng) => paintTorch(px, rng, P.misc.torchFlame, P.misc.torchGlow));
+  tex('soul_torch', (px, rng) => paintTorch(px, rng, 0xd8fbff, P.misc.soulTorchFlame));
+  tex('lantern', (px, rng) => paintLantern(px, rng, P.misc.lantern, 0xffe08a));
+  tex('soul_lantern', (px, rng) => paintLantern(px, rng, 0x2f9ab0, 0x8ff0ff));
+  tex('campfire_log', (px, rng) => {
+    paintBark(px, rng, P.wood.oak, { knots: 1 });
+    // Charred at both ends.
+    for (let x = 0; x < 4; x++) for (let y = 0; y < S; y++) px.blend(x, y, 0x1a1410, 0.7 - x * 0.15);
+    for (let x = 12; x < S; x++) for (let y = 0; y < S; y++) px.blend(x, y, 0x1a1410, 0.2 + (x - 12) * 0.16);
+    px.speckle(rng, 10, 0x0f0c0a, 0.6);
+  });
+
+  // --- misc ---------------------------------------------------------------
+  tex('flower_pot', (px, rng) => {
+    noiseFill(px, rng, P.misc.flowerPot, 0.08, 2, 4);
+    px.rect(0, 0, S, 3, shade(P.misc.flowerPot, 0.14));
+    px.hline(0, S - 1, 3, shade(P.misc.flowerPot, -0.3));
+    px.hline(0, S - 1, 0, shade(P.misc.flowerPot, 0.24));
+    px.frame(0, 0, S, S, shade(P.misc.flowerPot, -0.34));
+    px.speckle(rng, 12, shade(P.misc.flowerPot, -0.2), 0.4);
+    px.grain(rng, 0.045);
+  });
+  tex('cake_top', (px, rng) => {
+    noiseFill(px, rng, P.misc.cakeTop, 0.05, 2, 4);
+    px.frame(0, 0, S, S, 0xd8ccb0);
+    for (const [x, y] of [[3, 3], [8, 4], [12, 8], [5, 11], [10, 12]]) {
+      px.set(x, y, P.misc.cakeBerry);
+      px.set(x + 1, y, shade(P.misc.cakeBerry, -0.25));
+      px.set(x, y + 1, shade(P.misc.cakeBerry, -0.25));
+    }
+    px.speckle(rng, 10, 0xffffff, 0.4);
+    px.grain(rng, 0.03);
+  });
+  tex('cake_side', (px, rng) => {
+    px.fill(P.misc.cake);
+    px.rect(0, 0, S, 3, P.misc.cakeTop);
+    px.hline(0, S - 1, 3, 0xd8ccb0);
+    px.rect(0, 7, S, 3, P.misc.cakeInner);
+    px.rect(0, 13, S, 3, shade(P.misc.cake, -0.14));
+    px.grain(rng, 0.035);
+  });
+  derive('cake_bottom', 'cake_side', (px) => { px.rotate(2); px.scale(0.9); });
+  tex('cake_inner', (px, rng) => {
+    px.fill(P.misc.cakeInner);
+    px.rect(0, 0, S, 3, P.misc.cakeTop);
+    px.speckle(rng, 18, shade(P.misc.cakeInner, -0.2), 0.5);
+    px.speckle(rng, 10, 0xf5d8d8, 0.4);
+    px.grain(rng, 0.04);
+  });
+  tex('bell_top', (px, rng) => {
+    noiseFill(px, rng, 0xc8a02a, 0.08, 2, 4);
+    px.circle(7.5, 7.5, 6.2, 0xe8c04a);
+    px.circle(7.5, 7.5, 6.2, 0x8f6a12, 255, false);
+    px.circle(7.5, 7.5, 2.4, 0x8f6a12);
+    px.blend(5, 5, 0xfff0a8, 0.6);
+    px.grain(rng, 0.035);
+  });
+  tex('bell_bottom', (px, rng) => {
+    noiseFill(px, rng, 0xb08a1a, 0.08, 2, 4);
+    px.circle(7.5, 7.5, 6.6, 0xd8ae3a);
+    px.circle(7.5, 7.5, 3.0, 0x6f5210);
+    px.circle(7.5, 7.5, 1.4, 0x3a2a08);
+    px.grain(rng, 0.035);
+  });
+  tex('lightning_rod', (px, rng) => {
+    for (let y = 2; y < S; y++) {
+      px.set(6, y, shade(P.metal.copper, 0.24));
+      px.set(7, y, P.metal.copper);
+      px.set(8, y, shade(P.metal.copper, -0.3));
+    }
+    px.rect(6, 0, 3, 3, shade(P.metal.copper, 0.14));
+    px.set(7, 0, 0xffcf8a);
+    for (const y of [5, 10]) px.hline(6, 8, y, shade(P.metal.copper, -0.4));
+    px.grain(rng, 0.035);
+  });
 }
 
 // __SECTIONS__

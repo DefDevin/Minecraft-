@@ -798,9 +798,12 @@ function registerMaterialIcons() {
   });
   T('bone', (px) => {
     const w = 0xe6e3d4;
-    shaft(px, w, 4, 11, 14);
-    px.rect(10, 2, 3, 3, w);
-    px.rect(3, 11, 3, 3, w);
+    for (let y = 4; y <= 11; y++) {
+      const x = 14 - y;
+      px.set(x, y, w); px.set(x + 1, y, w); px.set(x + 2, y, shade(w, -0.16));
+    }
+    px.rect(10, 2, 4, 3, w);     // knuckle at the top
+    px.rect(2, 11, 4, 3, w);     // knuckle at the bottom
     finish(px);
   });
 
@@ -1089,15 +1092,7 @@ function registerArmorIcons() {
 
 function arrowIcon(name, headColor, fletchColor) {
   T(name, (px) => {
-    // Shaft along the anti-diagonal, head top right, fletching bottom left.
-    for (let i = 0; i < 11; i++) px.set(12 - i, 3 + i, 0x76552d);
-    px.rect(11, 1, 3, 3, headColor);
-    px.set(10, 3, headColor); px.set(13, 4, headColor);
-    for (let i = 0; i < 4; i++) {
-      px.set(3 + i, 13 - i, fletchColor);
-      px.set(2 + i, 13 - i, fletchColor);
-      px.set(4 + i, 14 - i, fletchColor);
-    }
+    paintMap(px, ARROW, { '#': headColor, s: 0x76552d, f: fletchColor });
     finish(px);
   });
 }

@@ -535,7 +535,7 @@ const INSTRUMENT = {
   },
   bass: (V) => {
     tone(V, { type: 'triangle', freq: 130.81, dur: 1.1, gain: 0.30,
-      filter: 'lowpass', q: 2 });
+      filter: 'lowpass', filterFreq: 600, filterQ: 2 });
     tone(V, { type: 'sine', freq: 65.4, dur: 1.0, gain: 0.20 });
   },
   basedrum: (V) => {
@@ -552,7 +552,7 @@ const INSTRUMENT = {
   },
   guitar: (V) => {
     tone(V, { type: 'sawtooth', freq: 261.63, dur: 0.8, gain: 0.16,
-      filter: 'lowpass', freq: 2200, freq2: 500, q: 3 });
+      filter: 'lowpass', filterFreq: 2200, filterFreq2: 500, filterQ: 3 });
     noise(V, { color: 'white', filter: 'bandpass', freq: 3000, q: 3, dur: 0.03, gain: 0.08 });
   },
   flute: (V) => {
@@ -815,13 +815,13 @@ define('sword.swing', 'players', (V) => {
 
 define('player.hurt', 'players', (V) => {
   tone(V, { type: 'sawtooth', freq: 300, freq2: 190, dur: 0.28, gain: 0.16,
-    filter: 'lowpass', freq: 1400, freq2: 500, q: 2 });
+    filter: 'lowpass', filterFreq: 1400, filterFreq2: 500, filterQ: 2 });
   noise(V, { color: 'pink', filter: 'bandpass', freq: 700, q: 1.2, dur: 0.2, gain: 0.1 });
 }, { gain: 1, range: 20 });
 
 define('player.death', 'players', (V) => {
   tone(V, { type: 'sawtooth', freq: 320, freq2: 90, dur: 1.1, gain: 0.2,
-    filter: 'lowpass', freq: 1600, freq2: 260, q: 2 });
+    filter: 'lowpass', filterFreq: 1600, filterFreq2: 260, filterQ: 2 });
   tone(V, { type: 'triangle', freq: 220, freq2: 70, dur: 1.3, gain: 0.14, delay: 0.08 });
 }, { gain: 1.1, range: 24 });
 
@@ -843,7 +843,8 @@ define('player.drink', 'players', (V) => {
 
 define('player.burp', 'players', (V) => {
   tone(V, { type: 'sawtooth', freq: 150, freq2: 90, dur: 0.35, gain: 0.18,
-    filter: 'lowpass', freq: 900, freq2: 300, q: 4, vibrato: { rate: 22, depth: 60 } });
+    filter: 'lowpass', filterFreq: 900, filterFreq2: 300, filterQ: 4,
+    vibrato: { rate: 22, depth: 60 } });
 }, { gain: 0.7, range: 12 });
 
 // ---------------------------------------------------------------------------
@@ -890,13 +891,15 @@ function mobVoice(m, kind) {
 
     if (m.noise < 2) {
       tone(V, {
-        type: m.type, freq: f0, freq2: f1, dur, gain: level,
-        filter: 'lowpass', q: m.q, attack: 0.02,
+        type: m.type, freq: f0, freq2: f1, dur, gain: level, attack: 0.02,
+        filter: 'lowpass', filterFreq: m.filt, filterFreq2: m.filt * 0.55,
+        filterQ: m.q * 0.5,
         vibrato: m.growl ? { rate: m.growl, depth: 40 } : null,
       });
       tone(V, {
         type: m.type, freq: f0 * 1.5, freq2: f1 * 1.5, dur: dur * 0.7,
-        gain: level * 0.4, filter: 'bandpass', q: m.q, delay: 0.01,
+        gain: level * 0.4, delay: 0.01,
+        filter: 'bandpass', filterFreq: m.filt * 1.6, filterQ: m.q * 0.4,
       });
     }
     if (m.noise > 0) {
@@ -946,7 +949,7 @@ define('mob.enderman.teleport', 'hostile', (V) => {
 
 define('mob.enderman.scream', 'hostile', (V) => {
   tone(V, { type: 'sawtooth', freq: 320, freq2: 90, dur: 1.5, gain: 0.24,
-    filter: 'lowpass', freq: 1400, freq2: 300, q: 6,
+    filter: 'lowpass', filterFreq: 1400, filterFreq2: 300, filterQ: 6,
     vibrato: { rate: 7, depth: 90 } });
   tone(V, { type: 'square', freq: 180, freq2: 60, dur: 1.7, gain: 0.14, delay: 0.05 });
   noise(V, { color: 'white', filter: 'bandpass', freq: 900, freq2: 300, q: 1.5,
