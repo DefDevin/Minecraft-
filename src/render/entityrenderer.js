@@ -421,9 +421,11 @@ export class EntityRenderer {
         // A forearm-shaped box angled up toward the crosshair; the long axis
         // runs away from the camera so it foreshortens instead of reading flat.
         m4compose(this.modelMatrix,
-          x + camDir.x * 0.16, y - 0.12 + camDir.y * 0.16, z + camDir.z * 0.16,
-          -0.55 + swing * 0.8, yaw, 0.35,
-          0.085, 0.085, 0.42);
+          x + camDir.x * 0.2 + right.x * 0.06,
+          y - 0.16 + camDir.y * 0.2,
+          z + camDir.z * 0.2 + right.z * 0.06,
+          -0.5 + swing * 0.8, yaw, 0.3,
+          0.055, 0.055, 0.3);
         gl.uniformMatrix4fv(P.uniforms.uModel, false, this.modelMatrix);
         gl.bindVertexArray(this.cubeVao);
         gl.drawArrays(gl.TRIANGLES, 0, 36);
