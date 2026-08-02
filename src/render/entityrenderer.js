@@ -111,6 +111,10 @@ export class EntityRenderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+    // Shadows first, so entities draw over their own shadow.
+    this.renderShadows(world, alpha);
+    gl.useProgram(P.program);
+
     let drawn = 0;
     for (const e of world.entities) {
       if (e.removed || e.isPlayer && e.perspective === 0) continue;
@@ -130,6 +134,93 @@ export class EntityRenderer {
     }
     gl.disable(gl.BLEND);
     return drawn;
+  }
+
+  /**
+   * A soft dark ellipse under each entity, projected onto the first solid
+   * surface below it. Minecraft's entity shadows are exactly this, and without
+   * them mobs read as floating.
+   */
+  renderShadows(world, alpha) {
+    const gl = this.gl;
+    const r = this.renderer;
+    const P = r.programs.line;
+    if (!this.shadowVao) this.buildShadowDisc();
+    gl.useProgram(P.program);
+    gl.uniformMatrix4fv(P.uniforms.uViewProj, false, r.viewProj);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(false);
+    gl.disable(gl.CULL_FACE);
+    gl.bindVertexArray(this.shadowVao);
+
+    for (const e of world.entities) {
+      if (e.removed || e.noShadow || (e.isPlayer && e.perspective === 0)) continue;
+      const ex = lerp(e.prevX ?? e.x, e.x, alpha);
+      const ey = lerp(e.prevY ?? e.y, e.y, alpha);
+      const ez = lerp(e.prevZ ?? e.z, e.z, alpha);
+      const dx = ex - r.cameraPos.x, dz = ez - r.cameraPos.z;
+      if (dx * dx + dz * dz > 3600) continue;    // no shadows past 60 blocks
+
+      // Find the surface under the entity, up to 8 blocks down.
+      let groundY = null;
+      const bx = Math.floor(ex), bz = Math.floor(ez);
+      for (let y = Math.floor(ey); y > Math.floor(ey) - 8; y--) {
+        if (world.isSolid(bx, y - 1, bz)) { groundY = y; break; }
+      }
+      if (groundY === null) continue;
+
+      const drop = ey - groundY;
+      const size = (e.shadowRadius ?? Math.max(0.25, (e.width ?? 0.6) * 0.55)) *
+        Math.max(0.35, 1 - drop / 8);
+      const light = world.getLight(bx, groundY, bz) / 15;
+      const opacity = 0.5 * Math.max(0, 1 - drop / 8) * (0.35 + 0.65 * light);
+      if (opacity < 0.02) continue;
+
+      gl.uniform3f(P.uniforms.uOffset, ex, groundY + 0.015, ez);
+      gl.uniform4f(P.uniforms.uColor, 0, 0, 0, opacity);
+      // The disc is a unit-radius fan; scale it by writing into uOffset only,
+      // so reuse one buffer and rely on the shader's simple offset transform.
+      this.drawShadowDisc(size);
+    }
+    gl.bindVertexArray(null);
+    gl.depthMask(true);
+    gl.enable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+  }
+
+  buildShadowDisc() {
+    const SEG = 16;
+    const v = [];
+    for (let i = 0; i < SEG; i++) {
+      const a0 = (i / SEG) * Math.PI * 2, a1 = ((i + 1) / SEG) * Math.PI * 2;
+      v.push(0, 0, 0);
+      v.push(Math.cos(a0), 0, Math.sin(a0));
+      v.push(Math.cos(a1), 0, Math.sin(a1));
+    }
+    this.shadowVerts = new Float32Array(v);
+    this.shadowScaled = new Float32Array(v.length);
+    const gl = this.gl;
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    this.shadowVbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, this.shadowVerts, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    this.shadowVao = vao;
+    this.shadowVertexCount = v.length / 3;
+  }
+
+  drawShadowDisc(size) {
+    const gl = this.gl;
+    const src = this.shadowVerts, dst = this.shadowScaled;
+    for (let i = 0; i < src.length; i++) dst[i] = src[i] * size;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.shadowVbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, dst);
+    gl.drawArrays(gl.TRIANGLES, 0, this.shadowVertexCount);
+    this.renderer.stats.drawCalls++;
   }
 
   renderMob(P, e, x, y, z, alpha, time, world) {

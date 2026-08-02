@@ -648,7 +648,7 @@ export class Renderer {
     this.drawPass(P, visible, PASS.SOLID);
 
     // Cutout: alpha-tested in the shader, still depth-writing.
-    gl.uniform1f(P.uniforms.uAlphaCutoff, 0.5);
+    gl.uniform1f(P.uniforms.uAlphaCutoff, 0.2);
     gl.disable(gl.CULL_FACE);
     this.drawPass(P, visible, PASS.CUTOUT);
     gl.enable(gl.CULL_FACE);
