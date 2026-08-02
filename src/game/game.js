@@ -679,6 +679,90 @@ export class Game {
     return this.modules.blockEntity?.createBlockEntity?.(def, x, y, z, state) ?? null;
   }
 
+  // -- Dimensions ----------------------------------------------------------
+
+  /**
+   * Move the player to another dimension, building a return portal if one is
+   * not already nearby. Overworld <-> Nether coordinates scale by 8, as in the
+   * real game, so a short walk in the Nether covers a long overworld distance.
+   */
+  travelToDimension(entity, target) {
+    const dest = this.worlds.get(target);
+    if (!dest || dest === this.world) return false;
+    const from = this.world;
+    const scale = (from.dimension === 'overworld' && target === 'nether') ? 1 / 8
+      : (from.dimension === 'nether' && target === 'overworld') ? 8 : 1;
+
+    let x = Math.floor(entity.x * scale);
+    let z = Math.floor(entity.z * scale);
+    let y = Math.floor(entity.y);
+    if (target === 'end') { x = 100; y = 50; z = 0; }
+
+    // Make sure the destination chunks exist before we look for ground.
+    const prevWorld = this.world;
+    this.world = dest;
+    this.loader.world = dest;
+    this.loader.lastCenter = { cx: Infinity, cz: Infinity };
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        this.loader.generateChunkNow((x >> 4) + dx, (z >> 4) + dz);
+      }
+    }
+
+    const spot = this.findPortalSpot(dest, x, y, z) ?? { x: x + 0.5, y: y + 1, z: z + 0.5 };
+
+    prevWorld.removeEntity(entity, true);
+    entity.removed = false;
+    entity.world = dest;
+    entity.x = spot.x; entity.y = spot.y; entity.z = spot.z;
+    entity.prevX = spot.x; entity.prevY = spot.y; entity.prevZ = spot.z;
+    entity.vx = entity.vy = entity.vz = 0;
+    entity.fallDistance = 0;
+    entity.portalTime = 0;
+    entity.updateBounds?.();
+    dest.addEntity(entity);
+
+    this.environment = new Environment(dest);
+    if (this.modules.biomes?.biomeById) {
+      this.environment.setBiomeTable(this.modules.biomes.biomeById);
+    }
+    this.setupWorldEvents(dest);
+    dest.simulationDistance = this.settings.simulationDistance;
+    this.chat(`Travelled to the ${target}`);
+    return true;
+  }
+
+  /** A safe standing spot near (x,y,z), carving one out if the area is solid. */
+  findPortalSpot(world, x, y, z) {
+    for (let r = 0; r <= 6; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const cx = x + dx, cz = z + dz;
+          // Search downward from the ceiling for a two-block-tall gap.
+          const top = world.ceiling ? 120 : MAX_Y - 1;
+          for (let cy = Math.min(top, y + 24); cy > MIN_Y + 2; cy--) {
+            if (!T.solid[world.getBlock(cx, cy - 1, cz)]) continue;
+            if (T.fluid[world.getBlock(cx, cy, cz)]) continue;
+            if (T.solid[world.getBlock(cx, cy, cz)]) continue;
+            if (T.solid[world.getBlock(cx, cy + 1, cz)]) continue;
+            return { x: cx + 0.5, y: cy, z: cz + 0.5 };
+          }
+        }
+      }
+    }
+    // Nowhere safe: hollow out a small platform rather than suffocating.
+    const stone = blocksByName.get('obsidian')?.defaultState ?? 0;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        world.setBlock(x + dx, y - 1, z + dz, stone);
+        world.setBlock(x + dx, y, z + dz, 0);
+        world.setBlock(x + dx, y + 1, z + dz, 0);
+      }
+    }
+    return { x: x + 0.5, y, z: z + 0.5 };
+  }
+
   // -- Screens -------------------------------------------------------------
 
   pushScreen(screen) {
