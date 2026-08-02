@@ -201,9 +201,10 @@ const SHOVEL_HEAD = [
 
 const HOE_HEAD = [
   '................',
-  '.....########...',
-  '.....###........',
-  '.....##.........',
+  '....########....',
+  '....######......',
+  '....###.........',
+  '....##..........',
 ];
 
 const SWORD = [
@@ -259,7 +260,7 @@ const CHESTPLATE = [
 const LEGGINGS = [
   '................',
   '.##############.',
-  '.##############.',
+  '.bbbbbbbbbbbbbb.',
   '.##############.',
   '.#####....#####.',
   '.#####....#####.',
@@ -293,15 +294,14 @@ const BUCKET = [
   '................',
   '................',
   '................',
-  '...##########...',
-  '...#wwwwwwww#...',
-  '...#wwwwwwww#...',
-  '...#wwwwwwww#...',
+  '..############..',
+  '..#wwwwwwwwww#..',
+  '..#wwwwwwwwww#..',
   '...#wwwwwwww#...',
   '...#wwwwwwww#...',
   '....#wwwwww#....',
   '....#wwwwww#....',
-  '....########....',
+  '.....######.....',
 ];
 
 const BOTTLE = [
@@ -324,14 +324,14 @@ const BOAT = [
   '................',
   '................',
   '................',
-  '................',
-  '..#...#..#...#..',
-  '..#...#..#...#..',
-  '..############..',
-  '..############..',
+  '.#............#.',
+  '.#............#.',
+  '.#...#....#...#.',
+  '.##############.',
+  '.##############.',
   '..############..',
   '...##########...',
-  '....########....',
+  '.....######.....',
 ];
 
 const MINECART = [
@@ -404,12 +404,13 @@ const BOW = [
 
 const CROSSBOW = [
   '................',
-  '..#..........#..',
-  '..#..........#..',
+  '.##..........##.',
+  '.##..........##.',
   '..##........##..',
-  '...#........#...',
-  '...#ssssssss#...',
+  '...#svvvvvv#s...',
+  '...#ssvvvvss#...',
   '....########....',
+  '.....######.....',
   '.......##.......',
   '.......##.......',
   '.......##.......',
@@ -476,22 +477,6 @@ const MEAT = [
   '..#########.....',
   '...#######......',
   '....####........',
-];
-
-const FISH = [
-  '................',
-  '................',
-  '................',
-  '..........###...',
-  '.......####..##.',
-  '.....#########..',
-  '...###########..',
-  '..############..',
-  '..############..',
-  '...###########..',
-  '.....#########..',
-  '.......####..##.',
-  '..........###...',
 ];
 
 const LOAF = [
@@ -962,10 +947,13 @@ function registerToolIcons() {
     finish(px);
   });
   T('flint_and_steel', (px) => {
-    px.rect(2, 8, 6, 5, 0x50494a);       // flint
-    px.rect(8, 3, 5, 3, 0xd8d8d8);       // steel striker
-    px.rect(9, 6, 3, 5, 0x9a9a9a);
-    px.rect(3, 6, 3, 2, 0x6e6668);
+    // A steel striker (an open C on the right) beside a flint chip.
+    px.rect(9, 2, 4, 2, 0xd8d8d8);
+    px.rect(12, 3, 2, 8, 0xd8d8d8);
+    px.rect(9, 10, 4, 2, 0xd8d8d8);
+    px.rect(9, 4, 2, 2, 0xa8a8a8);
+    px.rect(2, 6, 6, 5, 0x50494a);       // flint
+    px.rect(3, 7, 3, 2, 0x6e6668);
     finish(px);
   });
   T('fishing_rod', (px) => {
@@ -1027,7 +1015,7 @@ function registerArmorIcons() {
   for (const [prefix, color] of Object.entries(ARMOR_COLOR)) {
     for (const [piece, map] of Object.entries(ARMOR_MAPS)) {
       T(`${prefix}_${piece}`, (px, rng) => {
-        paintMap(px, map, { '#': color });
+        paintMap(px, map, { '#': color, b: shade(color, -0.35) });
         // Chainmail reads as a mesh; plate stays smooth.
         if (prefix === 'chainmail') {
           speckleInside(px, rng, 40, shade(color, -0.3));
@@ -1098,7 +1086,7 @@ function arrowIcon(name, headColor, fletchColor) {
 function registerCombatIcons() {
   T('bow', (px) => { paintMap(px, BOW, { '#': 0x8a5f2c, s: 0xe8e8e8 }); finish(px, false); });
   T('crossbow', (px) => {
-    paintMap(px, CROSSBOW, { '#': 0x8a5f2c, s: 0xe8e8e8 });
+    paintMap(px, CROSSBOW, { '#': 0x8a5f2c, s: 0xe8e8e8, v: 0x9a9a9a });
     finish(px);
   });
   arrowIcon('arrow', 0xd0d0d0, 0xf0f0f0);
@@ -1207,13 +1195,16 @@ function meatIcon(name, base, fat) {
 
 function fishIcon(name, body, belly, stripe) {
   T(name, (px) => {
-    paintMap(px, FISH, { '#': body });
-    px.rect(3, 9, 9, 2, belly);
+    ellipse(px, 6, 8, 4.9, 3.6, body);
+    // Tail: three columns fanning out where the body ends.
+    for (let i = 0; i < 3; i++) px.vline(10 + i, 8 - (1 + i), 8 + (1 + i), body);
+    px.vline(6, 3, 4, shade(body, -0.2));    // dorsal fin
+    px.rect(3, 9, 6, 2, belly);
     if (stripe !== undefined) {
-      px.vline(6, 6, 10, stripe);
-      px.vline(9, 5, 11, stripe);
+      px.vline(5, 5, 10, stripe);
+      px.vline(8, 5, 10, stripe);
     }
-    px.set(4, 7, 0x14100c);
+    px.set(3, 7, INK);                       // eye
     finish(px);
   });
 }
@@ -1460,7 +1451,7 @@ function registerUtilityIcons() {
 
   const mapIcon = (name, ink) => T(name, (px) => {
     paintMap(px, SHEET, { '#': 0xd9c9a3 });
-    px.frame(3, 2, 10, 11, 0xa8956f);
+    px.frame(3, 2, 10, 11, 0x7d6a48);
     if (ink) {
       px.rect(5, 5, 3, 2, 0x6f8a3a);
       px.rect(9, 7, 3, 3, 0x4a6fa8);

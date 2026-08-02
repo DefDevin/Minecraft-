@@ -25,6 +25,7 @@ import {
   shade, mixHex, hsv, fbm2, valueNoise2, TEX_SIZE,
 } from '../texgen.js';
 import { clamp, lerp } from '../../core/math.js';
+import { Random, hashString } from '../../core/rng.js';
 import { PALETTE as P, DYE_ORDER } from './palette.js';
 
 const S = TEX_SIZE;
@@ -2036,6 +2037,697 @@ function registerColored() {
   tex('shulker_box', (px, rng) => paintShulker(px, rng, 0x9a6f9a));
   tex('candle', (px, rng) => paintCandle(px, rng, 0xe4dcc0, false));
   tex('candle_lit', (px, rng) => paintCandle(px, rng, 0xe4dcc0, true));
+}
+
+// ---------------------------------------------------------------------------
+// Plants
+// ---------------------------------------------------------------------------
+
+/** Draw a flower head of one of a few stock shapes at the top of a stem. */
+function drawHead(px, rng, cx, o) {
+  const petal = o.petal, core = o.core ?? null, edge = o.edge ?? shade(petal, -0.28);
+  const cy = o.headY ?? 5;
+  switch (o.shape) {
+    case 'pom':
+      flowerHead(px, rng, cx, cy, o.r ?? 2.8, petal, core, edge);
+      break;
+    case 'cup':
+      // Tulip: a closed bud on a straight stalk.
+      px.rect(cx - 2, cy, 5, 4, petal);
+      px.set(cx - 2, cy, edge); px.set(cx + 2, cy, edge);
+      px.hline(cx - 2, cx + 2, cy + 4, edge);
+      px.set(cx - 1, cy - 1, petal); px.set(cx + 1, cy - 1, petal);
+      px.set(cx, cy - 2, petal);
+      px.vline(cx - 1, cy + 1, cy + 3, shade(petal, 0.22));
+      break;
+    case 'daisy':
+      for (const [dx, dy] of [[0, -2], [0, 2], [-2, 0], [2, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        px.set(cx + dx, cy + dy, petal);
+      }
+      px.set(cx, cy, core ?? petal);
+      px.set(cx - 2, cy - 2, edge); px.set(cx + 2, cy + 2, edge);
+      break;
+    case 'cluster':
+      for (let i = 0; i < (o.count ?? 7); i++) {
+        const x = cx + rng.int(5) - 2, y = cy + rng.int(5) - 2;
+        px.set(x, y, rng.chance(0.3) ? edge : petal);
+      }
+      if (core != null) px.set(cx, cy, core);
+      break;
+    case 'bells':
+      for (const [dx, dy] of [[-2, 3], [2, 5], [-1, 7], [2, 9]]) {
+        px.set(cx + dx, cy + dy, petal);
+        px.set(cx + dx, cy + dy + 1, shade(petal, -0.15));
+      }
+      break;
+    default:
+      flowerHead(px, rng, cx, cy, 2.4, petal, core, edge);
+  }
+}
+
+/** Register a cross-model flower. */
+function flowerTex(name, o) {
+  tex(name, (px, rng) => {
+    crossPlant(px, rng, {
+      stem: o.stem ?? P.plant.stem,
+      stemDark: o.stemDark ?? P.plant.stemDark,
+      base: o.base ?? 15,
+      top: o.stemTop ?? 7,
+      leaves: o.leafPairs ?? 2,
+      draw: (p, r, cx) => drawHead(p, r, cx, o),
+    });
+    px.grain(rng, 0.035);
+  });
+}
+
+/** Blades of grass rising from the bottom edge. */
+function paintBlades(px, rng, light, dark, opts = {}) {
+  const count = opts.count ?? 9;
+  const minH = opts.minH ?? 5, maxH = opts.maxH ?? 12;
+  for (let i = 0; i < count; i++) {
+    let x = 1 + rng.int(S - 2);
+    const h = minH + rng.int(maxH - minH + 1);
+    const lean = rng.chance(0.5) ? 1 : -1;
+    for (let k = 0; k < h; k++) {
+      const y = S - 1 - k;
+      const c = k > h - 3 ? light : mixHex(dark, light, k / h);
+      setw(px, x, y, c);
+      if (k < 2 && opts.thick !== false) setw(px, x + 1, y, dark);
+      if (k > h * 0.55 && rng.chance(0.4)) x += lean;
+    }
+  }
+  if (opts.floor) for (let x = 0; x < S; x++) px.set(x, S - 1, dark);
+}
+
+/** Hanging strands from the top edge — vines, roots, weeping growth. */
+function paintHanging(px, rng, light, dark, opts = {}) {
+  const count = opts.count ?? 8;
+  for (let i = 0; i < count; i++) {
+    let x = rng.int(S);
+    const h = (opts.minH ?? 6) + rng.int((opts.maxH ?? 14) - (opts.minH ?? 6) + 1);
+    for (let y = 0; y < h; y++) {
+      setw(px, x, y, y > h - 3 ? dark : light);
+      if (opts.wide && rng.chance(0.4)) setw(px, x + 1, y, dark);
+      if (rng.chance(0.18)) x += rng.chance(0.5) ? 1 : -1;
+    }
+  }
+  if (opts.cap) for (let x = 0; x < S; x++) px.set(x, 0, light);
+}
+
+function registerPlants() {
+  const F = P.flower;
+  flowerTex('dandelion', { petal: F.dandelion, core: 0xfff8b0, shape: 'cluster', count: 9, headY: 5 });
+  flowerTex('poppy', { petal: F.poppy, core: 0x2e1a12, shape: 'pom', r: 2.4, headY: 5 });
+  flowerTex('blue_orchid', { petal: F.blueOrchid, core: 0xd8f4ff, shape: 'cluster', count: 8, headY: 5 });
+  flowerTex('allium', { petal: F.allium, core: 0xd8b0f5, shape: 'pom', r: 2.6, headY: 5 });
+  flowerTex('azure_bluet', { petal: F.azureBluet, core: F.azureBluetCore, shape: 'cluster', count: 8, headY: 5 });
+  flowerTex('red_tulip', { petal: F.redTulip, shape: 'cup', headY: 4, leafPairs: 3 });
+  flowerTex('orange_tulip', { petal: F.orangeTulip, shape: 'cup', headY: 4, leafPairs: 3 });
+  flowerTex('white_tulip', { petal: F.whiteTulip, shape: 'cup', headY: 4, leafPairs: 3 });
+  flowerTex('pink_tulip', { petal: F.pinkTulip, shape: 'cup', headY: 4, leafPairs: 3 });
+  flowerTex('oxeye_daisy', { petal: F.oxeye, core: F.oxeyeCore, shape: 'daisy', headY: 5 });
+  flowerTex('cornflower', { petal: F.cornflower, core: 0x8fa8f0, shape: 'cluster', count: 10, headY: 5 });
+  flowerTex('lily_of_the_valley', { petal: F.lilyOfTheValley, shape: 'bells', headY: 2, stemTop: 3 });
+  flowerTex('wither_rose', {
+    petal: F.witherRose, core: 0x4a4046, shape: 'pom', r: 2.4, headY: 5,
+    stem: F.witherRoseStem, stemDark: 0x191517,
+  });
+  flowerTex('torchflower', {
+    petal: F.torchflower, core: F.torchflowerCore, shape: 'pom', r: 2.6, headY: 5,
+  });
+  tex('spore_blossom', (px, rng) => {
+    // Seen from below: a big pink bloom with spore strands trailing off it.
+    px.circle(7.5, 7.5, 5.2, F.pitcher);
+    px.circle(7.5, 7.5, 4.2, P.plant.sporeBlossom);
+    px.circle(7.5, 7.5, 2.0, 0xf0a8cf);
+    px.circle(7.5, 7.5, 0.9, 0xffe0f0);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      px.line(8, 8, Math.round(8 + Math.cos(a) * 6), Math.round(8 + Math.sin(a) * 6),
+        shade(P.plant.sporeBlossom, -0.2));
+    }
+    for (let i = 0; i < 6; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      if (Math.hypot(x - 7.5, y - 7.5) < 5.5) continue;
+      px.set(x, y, 0x6f9c4a);
+    }
+    px.grain(rng, 0.04);
+  });
+
+  // --- tall two-block flowers --------------------------------------------
+  tex('sunflower_bottom', (px, rng) => {
+    paintBlades(px, rng, P.plant.stem, P.plant.stemDark, { count: 3, minH: 14, maxH: 16, thick: false });
+    for (let y = 0; y < S; y++) { px.set(7, y, P.plant.stem); px.set(8, y, P.plant.stemDark); }
+    for (const [x, y] of [[5, 6], [10, 9], [4, 11]]) {
+      px.set(x, y, P.plant.stem); px.set(x, y + 1, P.plant.stemDark);
+      px.set(x + (x < 8 ? 1 : -1), y, P.plant.stem);
+    }
+  });
+  tex('sunflower_top', (px, rng) => {
+    for (let y = 8; y < S; y++) { px.set(7, y, P.plant.stem); px.set(8, y, P.plant.stemDark); }
+    px.circle(7.5, 6, 5.4, F.sunflower);
+    px.circle(7.5, 6, 3.4, F.sunflowerCore);
+    px.circle(7.5, 6, 2.0, 0x8f5f10);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      px.set(Math.round(7.5 + Math.cos(a) * 6), Math.round(6 + Math.sin(a) * 6), F.sunflower);
+    }
+    px.grain(rng, 0.035);
+  });
+  const tallFlowers = [
+    ['lilac', F.lilac, 0xb086bd],
+    ['rose_bush', F.roseBush, 0x8f2424],
+    ['peony', F.peony, 0xc79ac7],
+  ];
+  for (const [name, petal, deep] of tallFlowers) {
+    tex(`${name}_bottom`, (px, rng) => {
+      paintBlades(px, rng, P.plant.stem, P.plant.stemDark, { count: 4, minH: 12, maxH: 16, thick: false });
+      for (let y = 2; y < S; y++) { px.set(7, y, P.plant.stem); px.set(8, y, P.plant.stemDark); }
+      for (const [x, y] of [[4, 5], [11, 8], [5, 11]]) {
+        for (let k = 0; k < 3; k++) px.set(x + (x < 8 ? k : -k), y + (k > 1 ? 1 : 0), k === 2 ? P.plant.stemDark : P.plant.stem);
+      }
+    });
+    tex(`${name}_top`, (px, rng) => {
+      for (let y = 9; y < S; y++) { px.set(7, y, P.plant.stem); px.set(8, y, P.plant.stemDark); }
+      for (let i = 0; i < 26; i++) {
+        const x = 3 + rng.int(10), y = 2 + rng.int(8);
+        px.set(x, y, rng.chance(0.35) ? deep : petal);
+      }
+      for (let i = 0; i < 7; i++) px.set(3 + rng.int(10), 8 + rng.int(3), P.plant.stemDark);
+      px.grain(rng, 0.04);
+    });
+  }
+  tex('pitcher_plant_bottom', (px, rng) => {
+    paintBlades(px, rng, 0x4a7a3a, 0x33582a, { count: 5, minH: 11, maxH: 16 });
+    for (let y = 4; y < S; y++) { px.set(7, y, 0x5f8f44); px.set(8, y, 0x44703a); }
+    px.grain(rng, 0.04);
+  });
+  tex('pitcher_plant_top', (px, rng) => {
+    for (let y = 8; y < S; y++) { px.set(7, y, 0x5f8f44); px.set(8, y, 0x44703a); }
+    // Two pitchers.
+    for (const [cx, top] of [[4, 3], [11, 5]]) {
+      for (let y = top; y < top + 7; y++) {
+        for (let x = cx - 2; x <= cx + 2; x++) {
+          px.set(x, y, x === cx - 2 ? shade(F.pitcher, 0.2) : x === cx + 2 ? shade(F.pitcher, -0.25) : F.pitcher);
+        }
+      }
+      px.hline(cx - 2, cx + 2, top, 0xd8b0f0);
+      px.set(cx, top + 3, 0x4a2a6a);
+    }
+    px.grain(rng, 0.04);
+  });
+
+  // --- grasses and ferns --------------------------------------------------
+  tex('short_grass', (px, rng) =>
+    paintBlades(px, rng, P.grass.neutral, P.grass.neutralDark, { count: 10, minH: 5, maxH: 11 }));
+  tex('fern', (px, rng) => {
+    // A fern is a frond: a central rib with paired pinnae.
+    for (let y = 4; y < S; y++) px.set(8, y, P.grass.neutralDark);
+    for (let y = 4; y < S - 1; y += 2) {
+      const spread = Math.round(((y - 3) / 12) * 5) + 1;
+      for (let k = 1; k <= spread; k++) {
+        px.set(8 - k, y, P.grass.neutral);
+        px.set(8 + k, y + 1, P.grass.neutral);
+      }
+    }
+    px.set(8, 3, P.grass.neutral);
+    px.grain(rng, 0.04);
+  });
+  tex('tall_grass_bottom', (px, rng) =>
+    paintBlades(px, rng, P.grass.neutral, P.grass.neutralDark, { count: 9, minH: 12, maxH: 16 }));
+  tex('tall_grass_top', (px, rng) => {
+    paintBlades(px, rng, P.grass.neutral, P.grass.neutralDark, { count: 8, minH: 8, maxH: 15 });
+    // Nothing should touch the bottom edge — that is where the lower half is.
+    for (let x = 0; x < S; x++) px.set(x, S - 1, 0, 0);
+  });
+  derive('large_fern_bottom', 'fern', (px, rng) => {
+    for (let y = 0; y < 4; y++) for (let x = 6; x < 11; x++) if (rng.chance(0.5)) px.set(x, y, P.grass.neutralDark);
+  });
+  tex('large_fern_top', (px, rng) => {
+    for (let y = 2; y < S; y++) px.set(8, y, P.grass.neutralDark);
+    for (let y = 2; y < S - 1; y += 2) {
+      const spread = Math.round(((S - y) / 14) * 5) + 1;
+      for (let k = 1; k <= spread; k++) {
+        px.set(8 - k, y, P.grass.neutral);
+        px.set(8 + k, y + 1, P.grass.neutral);
+      }
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('dead_bush', (px, rng) => {
+    for (let i = 0; i < 7; i++) {
+      let x = 4 + rng.int(8), y = S - 1;
+      const h = 6 + rng.int(8);
+      for (let k = 0; k < h; k++) {
+        setw(px, x, y, k > h - 3 ? shade(P.plant.deadBush, 0.2) : P.plant.deadBush);
+        y--;
+        if (rng.chance(0.45)) x += rng.chance(0.5) ? 1 : -1;
+      }
+    }
+    px.grain(rng, 0.06);
+  });
+
+  // --- water plants -------------------------------------------------------
+  tex('seagrass', (px, rng) =>
+    paintBlades(px, rng, P.plant.seagrass, shade(P.plant.seagrass, -0.3), { count: 8, minH: 7, maxH: 14 }));
+  tex('tall_seagrass_bottom', (px, rng) =>
+    paintBlades(px, rng, P.plant.seagrass, shade(P.plant.seagrass, -0.3), { count: 7, minH: 13, maxH: 16 }));
+  tex('tall_seagrass_top', (px, rng) => {
+    paintBlades(px, rng, P.plant.seagrass, shade(P.plant.seagrass, -0.3), { count: 7, minH: 9, maxH: 16 });
+    for (let x = 0; x < S; x++) px.set(x, S - 1, 0, 0);
+  });
+  tex('kelp', (px, rng) => {
+    for (let y = 0; y < S; y++) {
+      const x = 7 + Math.round(Math.sin(y * 0.5) * 1.6);
+      px.set(x, y, P.plant.kelp);
+      px.set(w(x + 1), y, P.plant.kelpDark);
+      if (y % 3 === 0) {
+        const dir = rng.chance(0.5) ? -1 : 1;
+        for (let k = 1; k <= 3; k++) setw(px, x + dir * k, y + (k > 1 ? 1 : 0), P.plant.kelp);
+      }
+    }
+    px.grain(rng, 0.05);
+  });
+  derive('kelp_plant', 'kelp', (px, rng) => {
+    // The stem-only section: fewer fronds.
+    for (let i = 0; i < 8; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      if (Math.abs(x - 7) > 2) px.set(x, y, 0, 0);
+    }
+  });
+  tex('lily_pad', (px, rng) => {
+    // A round pad with a notch cut out of one side.
+    px.circle(7.5, 7.5, 7.2, P.plant.lilyPad);
+    px.circle(7.5, 7.5, 7.2, shade(P.plant.lilyPad, -0.28), 255, false);
+    for (let y = 8; y < S; y++) {
+      for (let x = 7; x < 10; x++) if (Math.abs(x - 8) <= (y - 8) / 3) px.set(x, y, 0, 0);
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      px.line(8, 8, Math.round(8 + Math.cos(a) * 6), Math.round(8 + Math.sin(a) * 6),
+        shade(P.plant.lilyPad, -0.16));
+    }
+    px.grain(rng, 0.05);
+  });
+
+  // --- vines and climbers -------------------------------------------------
+  tex('vine', (px, rng) =>
+    paintHanging(px, rng, P.foliage.neutral, P.foliage.neutralDark,
+      { count: 7, minH: 8, maxH: 16, wide: true, cap: true }));
+  tex('glow_lichen', (px, rng) => {
+    for (let i = 0; i < 13; i++) {
+      let x = rng.int(S), y = rng.int(S);
+      for (let k = 0; k < 4 + rng.int(6); k++) {
+        setw(px, x, y, rng.chance(0.3) ? shade(P.plant.glowLichen, 0.3) : P.plant.glowLichen);
+        x += rng.int(3) - 1; y += rng.int(3) - 1;
+      }
+    }
+  });
+  tex('hanging_roots', (px, rng) =>
+    paintHanging(px, rng, P.plant.root, shade(P.plant.root, -0.3), { count: 9, minH: 4, maxH: 11, cap: true }));
+  tex('cave_vines', (px, rng) => {
+    paintHanging(px, rng, 0x5f7a3a, 0x445a28, { count: 6, minH: 8, maxH: 16, wide: true, cap: true });
+    for (let i = 0; i < 5; i++) {
+      const x = rng.int(S), y = 4 + rng.int(11);
+      if (!px.getAlpha(x, y)) continue;
+      px.set(x, y, P.plant.glowBerry);
+      px.set(w(x + 1), y, shade(P.plant.glowBerry, -0.25));
+      px.set(x, w(y + 1), 0xd88a2a);
+    }
+  });
+  derive('cave_vines_plant', 'cave_vines', (px, rng) => {
+    px.speckle(rng, 5, 0x445a28, 0.5);
+  });
+  tex('twisting_vines', (px, rng) => {
+    for (let y = 0; y < S; y++) {
+      const x = 7 + Math.round(Math.sin(y * 0.7) * 2.2);
+      px.set(x, y, 0x2f8a7c);
+      px.set(w(x + 1), y, 0x1e6155);
+      if (y % 4 === 0) { px.set(w(x - 1), y, 0x3fae9c); px.set(w(x + 2), y, 0x1e6155); }
+    }
+    px.grain(rng, 0.05);
+  });
+  derive('twisting_vines_plant', 'twisting_vines', (px, rng) => px.speckle(rng, 6, 0x1e6155, 0.5));
+  tex('weeping_vines', (px, rng) =>
+    paintHanging(px, rng, 0xa8342a, 0x6f1d18, { count: 7, minH: 7, maxH: 16, wide: true, cap: true }));
+  derive('weeping_vines_plant', 'weeping_vines', (px, rng) => px.speckle(rng, 6, 0x6f1d18, 0.5));
+  tex('nether_sprouts', (px, rng) =>
+    paintBlades(px, rng, 0x2fa8a0, 0x1c7a74, { count: 11, minH: 4, maxH: 9 }));
+  tex('crimson_roots', (px, rng) =>
+    paintBlades(px, rng, 0xa8244a, 0x6f1530, { count: 9, minH: 4, maxH: 10 }));
+  tex('warped_roots', (px, rng) =>
+    paintBlades(px, rng, 0x2fb0a0, 0x1c7a70, { count: 9, minH: 4, maxH: 10 }));
+
+  // --- fungi --------------------------------------------------------------
+  const mushroom = (name, cap, stem, spots) => tex(name, (px, rng) => {
+    // Stalk.
+    for (let y = 9; y < S; y++) { px.set(7, y, stem); px.set(8, y, shade(stem, -0.2)); }
+    px.hline(6, 9, S - 1, shade(stem, -0.3));
+    // Cap.
+    for (let y = 4; y <= 9; y++) {
+      const half = y < 6 ? 3 : y < 8 ? 5 : 4;
+      for (let x = 7 - half; x <= 8 + half - 1; x++) {
+        px.set(x, y, y === 9 ? shade(cap, -0.35) : x < 7 ? shade(cap, 0.14) : cap);
+      }
+    }
+    if (spots) {
+      for (const [x, y] of [[5, 6], [10, 6], [7, 5], [4, 8], [11, 8]]) px.set(x, y, spots);
+    }
+    px.grain(rng, 0.04);
+  });
+  mushroom('brown_mushroom', P.plant.mushroomBrown, 0xc8b8a0, null);
+  mushroom('red_mushroom', P.plant.mushroomRed, 0xd8d0c0, 0xf0ece0);
+
+  tex('brown_mushroom_block', (px, rng) => {
+    noiseFill(px, rng, P.plant.mushroomBrown, 0.12, 3, 4);
+    px.grain(rng, 0.06);
+    px.speckle(rng, 20, shade(P.plant.mushroomBrown, -0.28), 0.5);
+    px.speckle(rng, 10, shade(P.plant.mushroomBrown, 0.2), 0.4);
+  });
+  tex('red_mushroom_block', (px, rng) => {
+    noiseFill(px, rng, P.plant.mushroomRed, 0.09, 3, 4);
+    // The vanilla white spot pattern.
+    for (const [cx, cy, r] of [[4, 4, 2.4], [11, 5, 1.8], [7, 10, 2.6], [13, 12, 1.6], [2, 11, 1.6]]) {
+      px.circle(cx, cy, r, 0xf0e8e0);
+      px.circle(cx, cy, r, 0xd8cfc4, 255, false);
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('mushroom_stem', (px, rng) => {
+    noiseFill(px, rng, P.plant.mushroomStem, 0.07, 2, 4);
+    for (let i = 0; i < 8; i++) {
+      const x = rng.int(S), y0 = rng.int(S), len = 4 + rng.int(9);
+      for (let k = 0; k < len; k++) blendw(px, x, y0 + k, shade(P.plant.mushroomStem, -0.18), 0.5);
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('mushroom_block_inside', (px, rng) => {
+    noiseFill(px, rng, P.plant.mushroomPore, 0.1, 3, 5);
+    px.grain(rng, 0.07);
+    px.speckle(rng, 22, shade(P.plant.mushroomPore, -0.24), 0.5);
+  });
+  tex('crimson_fungus', (px, rng) => {
+    for (let y = 9; y < S; y++) { px.set(7, y, 0xd8c8b0); px.set(8, y, 0xb0a088); }
+    for (let y = 5; y <= 9; y++) {
+      const half = y < 7 ? 3 : 4;
+      for (let x = 7 - half; x <= 8 + half - 1; x++) px.set(x, y, x < 7 ? 0xc03a3a : 0x9c2424);
+    }
+    for (const [x, y] of [[5, 7], [10, 7], [7, 6]]) px.set(x, y, 0x6f1414);
+    px.grain(rng, 0.04);
+  });
+  tex('warped_fungus', (px, rng) => {
+    for (let y = 9; y < S; y++) { px.set(7, y, 0xd0c8a8); px.set(8, y, 0xa89f80); }
+    for (let y = 5; y <= 9; y++) {
+      const half = y < 7 ? 3 : 4;
+      for (let x = 7 - half; x <= 8 + half - 1; x++) px.set(x, y, x < 7 ? 0x2fa89c : 0x1c7a70);
+    }
+    for (const [x, y] of [[5, 7], [10, 7], [7, 6]]) px.set(x, y, 0xf0a82a);
+    px.grain(rng, 0.04);
+  });
+
+  // --- cactus, cane, bamboo ----------------------------------------------
+  tex('cactus_side', (px, rng) => {
+    noiseFill(px, rng, P.plant.cactus, 0.08, 2, 4);
+    px.rect(0, 0, 1, S, shade(P.plant.cactus, -0.35));
+    px.rect(15, 0, 1, S, shade(P.plant.cactus, -0.35));
+    for (const x of [1, 14]) px.vline(x, 0, S - 1, shade(P.plant.cactus, 0.12));
+    for (let y = 1; y < S; y += 4) {
+      for (const x of [3, 7, 11]) {
+        px.set(x, y, P.plant.cactusSpine);
+        px.set(x, w(y + 1), shade(P.plant.cactusSpine, -0.3));
+      }
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('cactus_top', (px, rng) => {
+    noiseFill(px, rng, P.plant.cactusTop, 0.07, 2, 4);
+    px.circle(7.5, 7.5, 6.4, shade(P.plant.cactusTop, 0.1));
+    px.circle(7.5, 7.5, 6.4, shade(P.plant.cactus, -0.3), 255, false);
+    px.circle(7.5, 7.5, 2.4, shade(P.plant.cactus, -0.15));
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      px.set(Math.round(7.5 + Math.cos(a) * 4.6), Math.round(7.5 + Math.sin(a) * 4.6), P.plant.cactusSpine);
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('cactus_bottom', (px, rng) => {
+    noiseFill(px, rng, shade(P.plant.cactus, -0.12), 0.08, 2, 4);
+    px.circle(7.5, 7.5, 6.4, shade(P.plant.cactus, -0.22), 255, false);
+    px.grain(rng, 0.06);
+  });
+  tex('sugar_cane', (px, rng) => {
+    // Tinted by the grass colour, so keep it pale.
+    for (let y = 0; y < S; y++) {
+      px.set(6, y, shade(P.plant.sugarCane, 0.16));
+      px.set(7, y, P.plant.sugarCane);
+      px.set(8, y, shade(P.plant.sugarCane, -0.2));
+      px.set(9, y, shade(P.plant.sugarCane, -0.35));
+    }
+    for (const y of [2, 7, 12]) px.hline(6, 9, y, shade(P.plant.sugarCane, -0.4));
+    // Leaf blades peeling off the node.
+    for (const [y, dir] of [[3, -1], [8, 1], [13, -1]]) {
+      for (let k = 1; k <= 4; k++) {
+        setw(px, (dir < 0 ? 6 : 9) + dir * k, y - k, shade(P.plant.sugarCane, -0.1));
+      }
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('bamboo_stalk', (px, rng) => {
+    for (let y = 0; y < S; y++) {
+      px.set(6, y, shade(P.plant.bamboo, 0.2));
+      px.set(7, y, P.plant.bamboo);
+      px.set(8, y, P.plant.bambooDark);
+      px.set(9, y, shade(P.plant.bambooDark, -0.25));
+    }
+    for (const y of [1, 6, 11]) {
+      px.hline(5, 10, y, shade(P.plant.bambooDark, -0.35));
+      px.hline(5, 10, y + 1, shade(P.plant.bamboo, 0.24));
+    }
+    px.grain(rng, 0.04);
+  });
+  tex('bamboo_stage0', (px, rng) => {
+    // A young shoot: two short blades from the ground.
+    paintBlades(px, rng, P.plant.bamboo, P.plant.bambooDark, { count: 4, minH: 5, maxH: 9 });
+    px.grain(rng, 0.04);
+  });
+
+  // --- azalea and dripleaf -----------------------------------------------
+  tex('azalea_top', (px, rng) => {
+    paintLeaves(px, rng, P.foliage.azalea, shade(P.foliage.azalea, -0.32), { holes: 0.18 });
+    px.speckle(rng, 10, 0x7fb04a, 0.5);
+  });
+  tex('azalea_side', (px, rng) => {
+    paintLeaves(px, rng, P.foliage.azalea, shade(P.foliage.azalea, -0.3), { holes: 0.2 });
+    // The woody stem showing through at the bottom.
+    for (let y = 11; y < S; y++) { px.set(7, y, 0x6b5334); px.set(8, y, 0x4a3821); }
+  });
+  derive('flowering_azalea_top', 'azalea_top', (px, rng) => {
+    for (let i = 0; i < 10; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      if (!px.getAlpha(x, y)) continue;
+      px.set(x, y, P.foliage.azaleaFlower);
+      if (rng.chance(0.5)) px.set(w(x + 1), y, P.foliage.flowering);
+    }
+  });
+  derive('flowering_azalea_side', 'azalea_side', (px, rng) => {
+    for (let i = 0; i < 9; i++) {
+      const x = rng.int(S), y = rng.int(11);
+      if (!px.getAlpha(x, y)) continue;
+      px.set(x, y, P.foliage.azaleaFlower);
+      if (rng.chance(0.5)) px.set(x, w(y + 1), P.foliage.flowering);
+    }
+  });
+  tex('azalea_plant', (px, rng) => {
+    // The interior stem column of an azalea bush.
+    for (let y = 0; y < S; y++) {
+      px.set(6, y, 0x7a5f3a); px.set(7, y, 0x6b5334);
+      px.set(8, y, 0x4a3821); px.set(9, y, 0x3a2c19);
+    }
+    for (let i = 0; i < 10; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      if (Math.abs(x - 7.5) < 2.5) continue;
+      px.set(x, y, rng.chance(0.5) ? P.foliage.azalea : shade(P.foliage.azalea, -0.3));
+    }
+    px.grain(rng, 0.05);
+  });
+  tex('big_dripleaf_top', (px, rng) => {
+    px.circle(7.5, 7.5, 7.4, P.plant.dripleaf);
+    px.circle(7.5, 7.5, 7.4, shade(P.plant.dripleaf, -0.3), 255, false);
+    for (let i = 0; i < 7; i++) {
+      const a = -Math.PI / 2 + (i - 3) * 0.42;
+      px.line(8, 14, Math.round(8 + Math.cos(a) * 8), Math.round(14 + Math.sin(a) * 12),
+        shade(P.plant.dripleaf, -0.18));
+    }
+    px.hline(6, 9, S - 1, P.plant.dripleafStem);
+    px.grain(rng, 0.05);
+  });
+  tex('big_dripleaf_side', (px, rng) => {
+    for (let x = 0; x < S; x++) {
+      const h = 3 + Math.round(Math.sin(x * 0.4) * 1.6);
+      for (let y = 4; y < 4 + h; y++) {
+        px.set(x, y, y === 4 ? shade(P.plant.dripleaf, 0.18) : P.plant.dripleaf);
+      }
+      px.set(x, 4 + h, shade(P.plant.dripleaf, -0.3));
+    }
+    for (let y = 9; y < S; y++) { px.set(7, y, P.plant.dripleafStem); px.set(8, y, shade(P.plant.dripleafStem, -0.25)); }
+    px.grain(rng, 0.05);
+  });
+  tex('big_dripleaf_stem', (px, rng) => {
+    for (let y = 0; y < S; y++) {
+      px.set(6, y, shade(P.plant.dripleafStem, 0.2));
+      px.set(7, y, P.plant.dripleafStem);
+      px.set(8, y, shade(P.plant.dripleafStem, -0.25));
+    }
+    for (let y = 1; y < S; y += 5) px.hline(6, 8, y, shade(P.plant.dripleafStem, -0.4));
+    px.grain(rng, 0.04);
+  });
+  tex('small_dripleaf_top', (px, rng) => {
+    for (const [cx, cy, r] of [[5, 6, 3.4], [11, 8, 3.0]]) {
+      px.circle(cx, cy, r, P.plant.dripleaf);
+      px.circle(cx, cy, r, shade(P.plant.dripleaf, -0.3), 255, false);
+      px.set(cx, cy, shade(P.plant.dripleaf, 0.2));
+    }
+    for (let y = 9; y < S; y++) { px.set(7, y, P.plant.dripleafStem); px.set(8, y, shade(P.plant.dripleafStem, -0.25)); }
+    px.grain(rng, 0.05);
+  });
+  tex('small_dripleaf_side', (px, rng) => {
+    for (let y = 4; y < S; y++) { px.set(7, y, P.plant.dripleafStem); px.set(8, y, shade(P.plant.dripleafStem, -0.25)); }
+    for (const [cx, cy] of [[4, 5], [11, 7]]) {
+      for (let k = 0; k < 4; k++) {
+        px.set(cx + (cx < 8 ? k : -k), cy, P.plant.dripleaf);
+        px.set(cx + (cx < 8 ? k : -k), cy + 1, shade(P.plant.dripleaf, -0.25));
+      }
+    }
+    px.grain(rng, 0.05);
+  });
+
+  // --- berries, cocoa, gourds --------------------------------------------
+  for (let stage = 0; stage < 4; stage++) {
+    tex(`sweet_berry_bush_stage${stage}`, (px, rng) => {
+      const h = 5 + stage * 3;
+      paintBlades(px, rng, P.plant.berryLeaf, shade(P.plant.berryLeaf, -0.3),
+        { count: 5 + stage * 2, minH: Math.max(3, h - 3), maxH: h });
+      if (stage >= 2) {
+        for (let i = 0; i < (stage === 2 ? 3 : 6); i++) {
+          const x = rng.int(S), y = S - 2 - rng.int(h - 2);
+          if (!px.getAlpha(x, y)) continue;
+          px.set(x, y, P.plant.berry);
+          px.set(w(x + 1), y, shade(P.plant.berry, -0.3));
+        }
+      }
+      px.grain(rng, 0.04);
+    });
+  }
+  for (let stage = 0; stage < 3; stage++) {
+    tex(`cocoa_stage${stage}`, (px, rng) => {
+      const size = 4 + stage * 2;
+      const x0 = 8 - Math.floor(size / 2), y0 = 4;
+      for (let y = y0; y < y0 + size; y++) {
+        for (let x = x0; x < x0 + size; x++) {
+          const edge = x === x0 || x === x0 + size - 1 || y === y0 || y === y0 + size - 1;
+          px.set(x, y, edge ? shade(P.plant.cocoa, -0.35)
+            : x < x0 + 2 ? shade(P.plant.cocoa, 0.18) : P.plant.cocoa);
+        }
+      }
+      if (stage === 2) px.rect(x0 + 1, y0 + 1, 2, 2, 0xd8a05c);
+      // The stalk tying it to the log.
+      px.rect(7, 0, 2, y0, 0x6b5334);
+      px.grain(rng, 0.04);
+    });
+  }
+  tex('melon_side', (px, rng) => {
+    noiseFill(px, rng, P.plant.melonSkin, 0.09, 3, 4);
+    for (let x = 0; x < S; x++) {
+      if (((x >> 1) + (x >> 2)) % 2 === 0) continue;
+      for (let y = 0; y < S; y++) px.blend(x, y, P.plant.melonStripe, 0.7);
+    }
+    px.hline(0, S - 1, 0, shade(P.plant.melonSkin, 0.2));
+    px.hline(0, S - 1, S - 1, shade(P.plant.melonSkin, -0.3));
+    px.grain(rng, 0.05);
+  });
+  tex('melon_top', (px, rng) => {
+    noiseFill(px, rng, P.plant.melonStripe, 0.08, 3, 4);
+    px.circle(7.5, 7.5, 6.6, P.plant.melonSkin);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      px.line(8, 8, Math.round(8 + Math.cos(a) * 6.6), Math.round(8 + Math.sin(a) * 6.6),
+        P.plant.melonStripe);
+    }
+    px.circle(7.5, 7.5, 1.5, 0x8f6a2a);
+    px.grain(rng, 0.05);
+  });
+  tex('pumpkin_side', (px, rng) => {
+    noiseFill(px, rng, P.plant.pumpkin, 0.08, 3, 4);
+    for (const x of [2, 6, 9, 13]) {
+      px.vline(x, 0, S - 1, P.plant.pumpkinDark);
+      px.vline(w(x + 1), 0, S - 1, shade(P.plant.pumpkin, 0.14));
+    }
+    px.hline(0, S - 1, 0, shade(P.plant.pumpkin, 0.2));
+    px.hline(0, S - 1, S - 1, shade(P.plant.pumpkinDark, -0.2));
+    px.grain(rng, 0.05);
+  });
+  tex('pumpkin_top', (px, rng) => {
+    noiseFill(px, rng, P.plant.pumpkin, 0.08, 3, 4);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      px.line(8, 8, Math.round(8 + Math.cos(a) * 8), Math.round(8 + Math.sin(a) * 8),
+        P.plant.pumpkinDark);
+    }
+    px.circle(7.5, 7.5, 2.6, P.plant.pumpkinStem);
+    px.circle(7.5, 7.5, 1.4, shade(P.plant.pumpkinStem, 0.25));
+    px.grain(rng, 0.05);
+  });
+  const pumpkinFace = (px, lit) => {
+    const ink = lit ? P.plant.jackFlame : 0x2a1a0a;
+    // Eyes.
+    for (const ex of [3, 9]) {
+      for (let y = 4; y < 7; y++) {
+        for (let x = ex; x < ex + 4; x++) {
+          if (y === 4 && (x === ex || x === ex + 3)) continue;
+          px.set(x, y, ink);
+        }
+      }
+    }
+    // Mouth.
+    px.rect(4, 9, 8, 2, ink);
+    px.rect(3, 10, 10, 1, ink);
+    for (const x of [5, 8, 11]) px.set(x, 9, P.plant.pumpkin);
+    px.set(4, 11, ink); px.set(11, 11, ink);
+    if (lit) {
+      for (const [x, y] of [[4, 5], [10, 5], [7, 10]]) px.blend(x, y, 0xfff6c0, 0.8);
+    }
+  };
+  derive('carved_pumpkin', 'pumpkin_side', (px) => pumpkinFace(px, false));
+  derive('jack_o_lantern', 'pumpkin_side', (px) => pumpkinFace(px, true));
+
+  const stemTex = (name, tipColor) => tex(name, (px, rng) => {
+    for (let y = 4; y < S; y++) {
+      const x = 7 + Math.round(Math.sin(y * 0.6) * 1.4);
+      px.set(x, y, P.plant.stem);
+      px.set(w(x + 1), y, P.plant.stemDark);
+    }
+    for (const y of [6, 10, 14]) {
+      const dir = y % 4 === 2 ? -1 : 1;
+      for (let k = 1; k <= 3; k++) setw(px, 7 + dir * k, y - k, P.plant.stem);
+    }
+    px.set(7, 4, tipColor);
+    px.set(8, 4, shade(tipColor, -0.2));
+    px.grain(rng, 0.04);
+  });
+  stemTex('pumpkin_stem', 0xc9a02a);
+  stemTex('melon_stem', 0xc9a02a);
+  const attachedStem = (name) => tex(name, (px, rng) => {
+    // A stem that has bent over to meet the fruit beside it.
+    for (let x = 0; x < 9; x++) px.set(x, 8, P.plant.stem);
+    for (let x = 0; x < 9; x++) px.set(x, 9, P.plant.stemDark);
+    for (let y = 9; y < S; y++) { px.set(8, y, P.plant.stem); px.set(9, y, P.plant.stemDark); }
+    for (const [x, y] of [[3, 6], [6, 11], [1, 10]]) {
+      px.set(x, y, P.plant.stem); px.set(x + 1, y - 1, P.plant.stemDark);
+    }
+    px.grain(rng, 0.04);
+  });
+  attachedStem('attached_pumpkin_stem');
+  attachedStem('attached_melon_stem');
 }
 
 // __SECTIONS__

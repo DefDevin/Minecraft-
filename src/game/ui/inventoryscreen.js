@@ -33,6 +33,11 @@ export class ContainerScreen extends Screen {
     this.hoverSlot = -1;
     this.invLabel = opts.invLabel ?? 'Inventory';
     this.titleY = opts.titleY ?? 6;
+    // Subclass fields are not assigned yet when `build()` runs, so anything it
+    // needs is passed through the options object.
+    this.opts = opts;
+    this.container = opts.container ?? null;
+    this.blockEntity = opts.blockEntity ?? null;
     this.build();
   }
 

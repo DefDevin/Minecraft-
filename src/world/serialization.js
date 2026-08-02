@@ -20,9 +20,7 @@
 // is smallest, so the format degrades gracefully to a raw copy rather than ever
 // growing past it.
 
-import {
-  Section, CHUNK_SIZE, SECTION_COUNT, SECTION_VOLUME, MIN_Y,
-} from './chunk.js';
+import { Section, SECTION_COUNT, SECTION_VOLUME, MIN_Y } from './chunk.js';
 
 /** Bumped whenever the byte layout changes; older buffers are rejected. */
 export const SAVE_VERSION = 1;
@@ -47,8 +45,6 @@ const LIGHT_RLE = 2;       // (runLength, value) pairs
 // Generic array encodings, shared by the heightmaps and biomes.
 const ARR_RAW = 0;
 const ARR_RLE = 1;
-
-const HEIGHTMAP_LEN = CHUNK_SIZE * CHUNK_SIZE;
 
 /** Back-references that would make a block entity un-stringifiable. */
 const BE_SKIP_KEYS = new Set(['world', 'chunk', 'game', 'level', 'renderer', 'mesh']);
@@ -593,5 +589,3 @@ export function readChunkHeader(buffer) {
     return null;
   }
 }
-
-export { HEIGHTMAP_LEN };
