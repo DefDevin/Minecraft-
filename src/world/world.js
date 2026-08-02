@@ -504,8 +504,11 @@ export class World {
       for (let z = z0; z <= z1; z++) {
         for (let x = x0; x <= x1; x++) {
           const st = this.getBlock(x, y, z);
-          if (T.fluid[st] !== fluidId) continue;
-          const level = T.fluidLevel[st];
+          // A waterlogged block (fence, stair, slab with water in it) is water
+          // for the purposes of swimming, drowning and buoyancy.
+          const logged = fluidId === 1 && T.waterlogged[st] === 1;
+          if (T.fluid[st] !== fluidId && !logged) continue;
+          const level = logged ? 0 : T.fluidLevel[st];
           const height = level === 0 ? 1 : (8 - level) / 9;
           if (aabb.minY < y + height) return true;
         }

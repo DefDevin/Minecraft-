@@ -332,6 +332,7 @@ export const T = {
   cullGroup: null,    // Uint16Array: states with the same group cull each other
   fullCube: null,     // Uint8Array: model is exactly one 16^3 box
   emissive: null,     // Uint8Array
+  waterlogged: null,  // Uint8Array: the cell also holds a water source
 };
 
 export function freezeBlocks() {
@@ -352,6 +353,7 @@ export function freezeBlocks() {
   T.conductive = new Uint8Array(n);
   T.cullGroup = new Uint16Array(n);
   T.fullCube = new Uint8Array(n);
+  T.waterlogged = new Uint8Array(n);
   T.emissive = new Uint8Array(n);
 
   for (let s = 0; s < n; s++) {
@@ -388,6 +390,8 @@ export function freezeBlocks() {
     // Blocks that hide their own internal faces (glass, leaves in fancy=off)
     // share a cull group; group 0 means "never cull against a different state".
     T.cullGroup[s] = b.transparentToSelf ? (b.index + 1) : 0;
+    T.waterlogged[s] = (b.stateDef.has('waterlogged') &&
+      b.stateDef.get(s - b.base, 'waterlogged') === true) ? 1 : 0;
   }
   return T;
 }

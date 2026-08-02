@@ -12,7 +12,7 @@
 //   [5]    float  texture array layer
 //   [6]    uint32 packed: normal(3) ao(2) sky(4) block(4) tint(3) emissive(4)
 
-import { T, blockOf, RENDER, PASS, TINT } from '../world/blocks.js';
+import { T, blockOf, blocksByName, RENDER, PASS, TINT } from '../world/blocks.js';
 import { layerOf } from './texgen.js';
 import { FACES } from '../core/math.js';
 import { MIN_Y, SECTION_HEIGHT, CHUNK_SIZE } from '../world/chunk.js';
@@ -71,7 +71,16 @@ function bakeModel(state) {
 }
 
 /** Drop the bake cache — only needed if textures are regenerated. */
-export function clearBakeCache() { bakedCache.clear(); }
+export function clearBakeCache() { bakedCache.clear(); waterState = undefined; }
+
+/** The water source state, resolved on first use since blocks register late. */
+let waterState;
+function getWaterState() {
+  if (waterState === undefined) {
+    waterState = blocksByName.get('water')?.defaultState ?? 0;
+  }
+  return waterState;
+}
 
 // ---------------------------------------------------------------------------
 // Growable vertex buffers, one per render pass
@@ -546,16 +555,23 @@ function emitCross(mb, x, y, z, state, baked) {
 // slopes smoothly toward its flow direction.
 // ---------------------------------------------------------------------------
 
+/**
+ * Is this cell filled with `fluid`? A waterlogged block (a fence or stair with
+ * water in the same cell) counts as a water source for surface purposes.
+ */
+const isFluidCell = (state, fluid) =>
+  T.fluid[state] === fluid || (fluid === 1 && T.waterlogged[state] === 1);
+
 function fluidCornerHeight(x, y, z, fluid) {
   // Average the height of the four cells touching this corner.
   let total = 0, count = 0;
   for (let dz = -1; dz <= 0; dz++) {
     for (let dx = -1; dx <= 0; dx++) {
       const above = nbBlocks[nbIndex(x + dx, y + 1, z + dz)];
-      if (T.fluid[above] === fluid) return 1;
+      if (isFluidCell(above, fluid)) return 1;
       const st = nbBlocks[nbIndex(x + dx, y, z + dz)];
-      if (T.fluid[st] === fluid) {
-        const lvl = T.fluidLevel[st];
+      if (isFluidCell(st, fluid)) {
+        const lvl = T.fluid[st] === fluid ? T.fluidLevel[st] : 0;
         total += lvl === 0 ? 1 : (8 - lvl) / 8;
         count++;
       } else if (!T.solid[st]) {
@@ -565,6 +581,12 @@ function fluidCornerHeight(x, y, z, fluid) {
   }
   if (count === 0) return 0.9;
   return Math.min(1, total / count * 1.05);
+}
+
+/** A fluid face is drawn unless the neighbour is opaque or the same fluid. */
+function fluidFaceVisible(fluid, neighbor) {
+  if (T.opaque[neighbor]) return false;
+  return !isFluidCell(neighbor, fluid);
 }
 
 function fluidPass(x, y, z, state) {
@@ -578,7 +600,7 @@ function fluidPass(x, y, z, state) {
   const emissive = fluid === 2 ? 15 : 0;
 
   const above = nbBlocks[nbIndex(x, y + 1, z)];
-  const sameAbove = T.fluid[above] === fluid;
+  const sameAbove = isFluidCell(above, fluid);
   // Corner heights, in the order used by FACE_CORNERS for the up face.
   const h00 = sameAbove ? 1 : fluidCornerHeight(x, y, z, fluid);
   const h10 = sameAbove ? 1 : fluidCornerHeight(x + 1, y, z, fluid);
@@ -590,7 +612,7 @@ function fluidPass(x, y, z, state) {
   const packed = pack(3, 3, sky, blk, tint, emissive);
 
   // Top surface
-  if (!sameAbove && faceVisible(state, above)) {
+  if (!sameAbove && fluidFaceVisible(fluid, above)) {
     mb.ensure(4, 6);
     const a = mb.vertex(x, y + h01, z + 1, 0, 1, topFace.layer, packed);
     const b = mb.vertex(x + 1, y + h11, z + 1, 1, 1, topFace.layer, packed);
@@ -607,7 +629,7 @@ function fluidPass(x, y, z, state) {
 
   // Bottom
   const below = nbBlocks[nbIndex(x, y - 1, z)];
-  if (faceVisible(state, below)) {
+  if (fluidFaceVisible(fluid, below)) {
     mb.ensure(4, 6);
     const p = pack(2, 3, nbSky[nbIndex(x, y - 1, z)], nbLight[nbIndex(x, y - 1, z)], tint, emissive);
     const a = mb.vertex(x, y, z, 0, 0, topFace.layer, p);
@@ -624,8 +646,7 @@ function fluidPass(x, y, z, state) {
   for (const f of [0, 1, 4, 5]) {
     const d = FACES[f];
     const nb = nbBlocks[nbIndex(x + d.dx, y + d.dy, z + d.dz)];
-    if (!faceVisible(state, nb)) continue;
-    if (T.opaque[nb]) continue;
+    if (!fluidFaceVisible(fluid, nb)) continue;
     mb.ensure(4, 6);
     const ni = nbIndex(x + d.dx, y, z + d.dz);
     const p = pack(f, 3, nbSky[ni], nbLight[ni], tint, emissive);
@@ -677,6 +698,12 @@ export function meshSection(world, chunk, sy) {
         const r = T.render[st];
         if (r === RENDER.INVISIBLE) continue;
         if (r === RENDER.FLUID) { fluidPass(x, y, z, st); continue; }
+        // A waterlogged stair or fence holds a water source in the same cell,
+        // so it needs the fluid surface drawn around its own geometry.
+        if (T.waterlogged[st]) {
+          const ws = getWaterState();
+          if (ws) fluidPass(x, y, z, ws);
+        }
         // Full opaque cubes were handled by the greedy pass.
         if (r === RENDER.CUBE && T.fullCube[st] && T.pass[st] === PASS.SOLID) continue;
         modelPass(x, y, z, st);
