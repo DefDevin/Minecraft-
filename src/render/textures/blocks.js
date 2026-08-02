@@ -1164,6 +1164,311 @@ function copperPatina(px, rng, amount) {
   px.grain(rng, 0.04);
 }
 
+// ---------------------------------------------------------------------------
+// Soil, sand, ice
+// ---------------------------------------------------------------------------
+
+/** Plain dirt: warm mid-brown with light and dark grain, no structure. */
+function paintDirt(px, rng, base = P.soil.dirt, opts = {}) {
+  noiseFill(px, rng, base, opts.amp ?? 0.11, 3, 4);
+  px.grain(rng, opts.grain ?? 0.08);
+  clusters(px, rng, opts.dark ?? 5, P.soil.dirtDark, 0.65, 3);
+  clusters(px, rng, opts.light ?? 4, P.soil.dirtLight, 0.5, 3);
+  px.speckle(rng, 12, shade(base, -0.3), 0.5);
+}
+
+/**
+ * The ragged grass fringe that runs along the top of a grass block's side.
+ * Vanilla draws this as a separate tinted overlay quad; we have no overlay
+ * pass, so it is baked in already-green and the dirt beneath stays brown.
+ * `onto` may be null to draw the fringe alone (the overlay texture).
+ */
+function grassFringe(px, rng, colors, opts = {}) {
+  const min = opts.min ?? 3, max = opts.max ?? 5;
+  const heights = [];
+  for (let x = 0; x < S; x++) heights.push(min + rng.int(max - min + 1));
+  // Smooth the profile so it looks like turf, not a bar chart.
+  for (let i = 0; i < S; i++) {
+    const a = heights[(i + S - 1) % S], b = heights[i], c = heights[(i + 1) % S];
+    heights[i] = Math.round((a + b * 2 + c) / 4);
+  }
+  for (let x = 0; x < S; x++) {
+    const h = heights[x];
+    for (let y = 0; y < h; y++) {
+      const t = y / Math.max(h - 1, 1);
+      let col = mixHex(colors.light, colors.dark, t * 0.9);
+      if (y === h - 1) col = colors.dark;
+      px.set(x, y, shade(col, (rng.next() - 0.5) * 0.12));
+    }
+    // A stray blade below the main mass.
+    if (rng.chance(0.3)) px.set(x, h, colors.dark);
+  }
+}
+
+function registerSoil() {
+  tex('dirt', (px, rng) => paintDirt(px, rng));
+  tex('coarse_dirt', (px, rng) => {
+    paintDirt(px, rng, P.soil.coarse, { amp: 0.16, grain: 0.11, dark: 7, light: 5 });
+    // Grit: hard dark pixels that make it read rougher than plain dirt.
+    px.speckle(rng, 30, 0x4a3220, 0.7);
+    px.speckle(rng, 16, 0xb08a62, 0.5);
+  });
+  tex('rooted_dirt', (px, rng) => {
+    paintDirt(px, rng, P.soil.rooted, { amp: 0.1 });
+    for (let i = 0; i < 7; i++) {
+      let x = rng.int(S), y = rng.int(S);
+      for (let k = 0; k < 3 + rng.int(4); k++) {
+        blendw(px, x, y, P.soil.root, 0.8);
+        x += rng.int(3) - 1; y += rng.int(2);
+      }
+    }
+  });
+
+  tex('grass_block_top', (px, rng) => {
+    // Deliberately pale: the chunk shader multiplies this by the biome colour.
+    noiseFill(px, rng, P.grass.neutral, 0.09, 3, 6);
+    px.grain(rng, 0.075);
+    clusters(px, rng, 5, P.grass.neutralDark, 0.55, 3);
+    clusters(px, rng, 4, shade(P.grass.neutral, 0.14), 0.45, 3);
+    px.speckle(rng, 14, shade(P.grass.neutralDark, -0.1), 0.4);
+  });
+  tex('grass_block_side', (px, rng) => {
+    paintDirt(px, rng);
+    grassFringe(px, rng, { light: P.grass.fringeLight, dark: P.grass.fringeDark });
+    // The very top row is fully turf.
+    for (let x = 0; x < S; x++) px.set(x, 0, shade(P.grass.fringe, (rng.next() - 0.5) * 0.14));
+  });
+  tex('grass_block_side_overlay', (px, rng) => {
+    // The tinted fringe on its own: alpha 0 everywhere the turf is not.
+    grassFringe(px, rng, { light: P.grass.neutral, dark: P.grass.neutralDark });
+    for (let x = 0; x < S; x++) px.set(x, 0, P.grass.neutral);
+  });
+  tex('grass_block_snow', (px, rng) => {
+    paintDirt(px, rng);
+    grassFringe(px, rng, { light: 0xffffff, dark: P.soil.snowShade }, { min: 4, max: 6 });
+    for (let x = 0; x < S; x++) px.set(x, 0, 0xffffff);
+  });
+
+  tex('podzol_top', (px, rng) => {
+    noiseFill(px, rng, P.soil.podzolTop, 0.16, 3, 5);
+    px.grain(rng, 0.09);
+    clusters(px, rng, 6, P.soil.podzolOrange, 0.7, 4);
+    clusters(px, rng, 5, P.soil.podzol, 0.7, 3);
+    px.speckle(rng, 18, 0x3a2410, 0.6);
+    px.speckle(rng, 10, 0xa9701f, 0.5);
+  });
+  tex('podzol_side', (px, rng) => {
+    paintDirt(px, rng);
+    // A dark humus band under a rusty orange litter layer.
+    grassFringe(px, rng, { light: P.soil.podzolOrange, dark: P.soil.podzol },
+      { min: 3, max: 5 });
+    for (let x = 0; x < S; x++) px.set(x, 0, shade(P.soil.podzolOrange, (rng.next() - 0.5) * 0.16));
+    px.speckle(rng, 8, 0x2e1c0c, 0.5);
+  });
+  tex('mycelium_top', (px, rng) => {
+    noiseFill(px, rng, P.soil.myceliumTop, 0.14, 3, 5);
+    px.grain(rng, 0.08);
+    clusters(px, rng, 6, P.soil.mycelium, 0.6, 3);
+    px.speckle(rng, 22, P.soil.myceliumSpore, 0.6);
+    px.speckle(rng, 10, 0x4a3f45, 0.5);
+  });
+  tex('mycelium_side', (px, rng) => {
+    paintDirt(px, rng);
+    grassFringe(px, rng, { light: P.soil.myceliumSpore, dark: P.soil.mycelium },
+      { min: 2, max: 4 });
+    for (let x = 0; x < S; x++) px.set(x, 0, shade(P.soil.myceliumTop, (rng.next() - 0.5) * 0.14));
+  });
+
+  tex('dirt_path_top', (px, rng) => {
+    noiseFill(px, rng, P.soil.path, 0.1, 3, 5);
+    px.grain(rng, 0.07);
+    clusters(px, rng, 4, shade(P.soil.path, -0.24), 0.55, 3);
+    px.speckle(rng, 14, shade(P.soil.path, 0.15), 0.4);
+    // Trodden edge.
+    px.frame(0, 0, S, S, shade(P.soil.path, -0.2), 120);
+  });
+  tex('dirt_path_side', (px, rng) => {
+    paintDirt(px, rng);
+    for (let x = 0; x < S; x++) {
+      px.set(x, 0, shade(P.soil.path, (rng.next() - 0.5) * 0.14));
+      px.blend(x, 1, P.soil.path, 0.6);
+    }
+  });
+  tex('farmland', (px, rng) => {
+    paintDirt(px, rng, P.soil.farmland, { amp: 0.09 });
+    // Ploughed furrows.
+    for (const y of [3, 7, 11, 15]) {
+      for (let x = 0; x < S; x++) px.blend(x, y, shade(P.soil.farmland, -0.35), 0.8);
+      for (let x = 0; x < S; x++) px.blend(x, w(y - 2), shade(P.soil.farmland, 0.18), 0.4);
+    }
+    px.grain(rng, 0.05);
+  });
+  derive('farmland_moist', 'farmland', (px, rng) => {
+    px.tint(0x9a86c0, 0.5);
+    px.scale(0.82);
+    px.speckle(rng, 12, 0x2e1c10, 0.5);
+  });
+
+  tex('mud', (px, rng) => {
+    noiseFill(px, rng, P.soil.mud, 0.16, 3, 4);
+    px.grain(rng, 0.06);
+    clusters(px, rng, 5, shade(P.soil.mud, -0.35), 0.7, 4);
+    // Wet sheen.
+    px.speckle(rng, 10, 0x6a5f66, 0.4);
+  });
+  tex('packed_mud', (px, rng) => {
+    noiseFill(px, rng, P.soil.packedMud, 0.11, 3, 4);
+    px.grain(rng, 0.07);
+    px.speckle(rng, 22, shade(P.soil.packedMud, -0.28), 0.5);
+    px.speckle(rng, 14, 0xc2a07f, 0.4);
+    crackWalk(px, rng, 2, 7, shade(P.soil.packedMud, -0.4), 0.5);
+  });
+  tex('mud_bricks', (px, rng) => {
+    paintBrickCourse(px, rng, P.soil.mudBrick, shade(P.soil.mudBrick, -0.38),
+      { rows: 4, perRow: 2, jitter: 0.13 });
+    px.speckle(rng, 16, shade(P.soil.mudBrick, 0.16), 0.4);
+    px.grain(rng, 0.045);
+  });
+  tex('mangrove_roots_side', (px, rng) => {
+    // Tangled roots with gaps of shadow between them.
+    px.fill(0x2b1e15);
+    for (let i = 0; i < 9; i++) {
+      let x = rng.int(S);
+      const c = shade(P.wood.mangrove.bark, (rng.next() - 0.5) * 0.3);
+      for (let y = 0; y < S; y++) {
+        setw(px, x, y, c);
+        setw(px, x + 1, y, shade(c, -0.25));
+        if (rng.chance(0.3)) x += rng.int(3) - 1;
+      }
+    }
+    px.grain(rng, 0.07);
+  });
+  tex('mangrove_roots_top', (px, rng) => {
+    px.fill(0x2b1e15);
+    for (let i = 0; i < 7; i++) {
+      const cx = rng.int(S), cy = rng.int(S), r = 1.4 + rng.next() * 1.4;
+      for (let y = -3; y <= 3; y++) {
+        for (let x = -3; x <= 3; x++) {
+          const d = Math.hypot(x, y);
+          if (d > r) continue;
+          setw(px, cx + x, cy + y, d > r - 0.9 ? P.wood.mangrove.barkDark : P.wood.mangrove.core);
+        }
+      }
+    }
+    px.grain(rng, 0.06);
+  });
+  derive('muddy_mangrove_roots_side', 'mangrove_roots_side', (px, rng) => {
+    noiseOverlay(px, rng, P.soil.mud, 0.4, 4, 0.85);
+    px.grain(rng, 0.05);
+  });
+  derive('muddy_mangrove_roots_top', 'mangrove_roots_top', (px, rng) => {
+    noiseOverlay(px, rng, P.soil.mud, 0.35, 4, 0.9);
+    px.grain(rng, 0.05);
+  });
+
+  // --- sand and sandstone -------------------------------------------------
+  tex('sand', (px, rng) => paintGrainy(px, rng, P.soil.sand, P.soil.sandDark, 0.06));
+  tex('red_sand', (px, rng) => paintGrainy(px, rng, P.soil.redSand, P.soil.redSandDark, 0.07));
+
+  const sandstones = [
+    ['sandstone', P.soil.sandstone, P.soil.sandstoneTop, P.soil.sandstoneDark],
+    ['red_sandstone', P.soil.redSandstone, P.soil.redSandstoneTop, P.soil.redSandstoneDark],
+  ];
+  for (const [name, base, top, dark] of sandstones) {
+    tex(name, (px, rng) => {
+      // The side face: horizontal strata with a capping band.
+      noiseFill(px, rng, base, 0.06, 3, 6);
+      for (let y = 0; y < S; y++) {
+        const band = Math.sin(y * 0.9) * 0.5 + 0.5;
+        for (let x = 0; x < S; x++) px.shadePixel(x, y, (band - 0.5) * 0.1);
+      }
+      px.hline(0, S - 1, 0, shade(top, 0.08));
+      px.hline(0, S - 1, 1, top);
+      px.hline(0, S - 1, 2, shade(dark, 0.1));
+      px.hline(0, S - 1, S - 1, shade(dark, -0.08));
+      px.grain(rng, 0.045);
+      px.speckle(rng, 16, dark, 0.4);
+    });
+    tex(`${name}_top`, (px, rng) => paintGrainy(px, rng, top, dark, 0.05));
+    tex(`${name}_bottom`, (px, rng) => {
+      paintGrainy(px, rng, shade(base, -0.06), dark, 0.07);
+      px.speckle(rng, 20, dark, 0.5);
+    });
+    tex(`cut_${name}`, (px, rng) => {
+      noiseFill(px, rng, base, 0.05, 2, 4);
+      px.frame(0, 0, S, S, shade(dark, -0.05));
+      px.rect(1, 1, 14, 14, base);
+      px.bevel(1, 1, 14, 14, 0.16, 0.2);
+      px.rect(3, 3, 10, 10, shade(base, 0.04));
+      px.bevel(3, 3, 10, 10, 0.06, 0.14);
+      px.grain(rng, 0.035);
+    });
+    tex(`chiseled_${name}`, (px, rng) => {
+      noiseFill(px, rng, base, 0.05, 2, 4);
+      px.frame(0, 0, S, S, dark);
+      px.rect(1, 1, 14, 14, shade(base, 0.04));
+      px.bevel(1, 1, 14, 14, 0.14, 0.18);
+      // A carved relief: the vanilla creeper/wither motif reduced to a glyph.
+      const ink = shade(dark, -0.18);
+      px.rect(6, 3, 4, 3, ink);
+      px.set(5, 4, ink); px.set(10, 4, ink);
+      px.rect(5, 7, 6, 5, ink);
+      px.set(4, 8, ink); px.set(11, 8, ink);
+      px.rect(7, 8, 2, 2, shade(base, 0.2));
+      px.grain(rng, 0.03);
+    });
+  }
+
+  // --- snow and ice -------------------------------------------------------
+  tex('snow', (px, rng) => {
+    noiseFill(px, rng, P.soil.snow, 0.035, 2, 5);
+    px.grain(rng, 0.03);
+    px.speckle(rng, 16, P.soil.snowShade, 0.4);
+  });
+  derive('snow_block', 'snow', (px, rng) => {
+    px.speckle(rng, 10, 0xffffff, 0.5);
+  });
+  tex('powder_snow', (px, rng) => {
+    noiseFill(px, rng, P.soil.powderSnow, 0.05, 3, 4);
+    px.grain(rng, 0.045);
+    // Soft drifts rather than flat white.
+    clusters(px, rng, 5, 0xdfeaf5, 0.5, 4);
+    px.speckle(rng, 14, 0xffffff, 0.6);
+  });
+  tex('ice', (px, rng) => {
+    // Translucent: the pass behind it shows through.
+    const n = fbm2(rng, S, 3, 4);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const v = n[y * S + x];
+        px.set(x, y, mixHex(P.soil.ice, P.soil.iceLight, v), 178);
+      }
+    }
+    crackWalk(px, rng, 4, 12, 0xffffff, 0.5);
+    crackWalk(px, rng, 3, 9, 0x5f86c4, 0.4);
+    px.frame(0, 0, S, S, 0xcfe4ff, 140);
+    px.grain(rng, 0.03);
+  });
+  tex('packed_ice', (px, rng) => {
+    noiseFill(px, rng, P.soil.packedIce, 0.1, 3, 4);
+    crackWalk(px, rng, 5, 10, 0xc0d8ff, 0.45);
+    px.grain(rng, 0.04);
+    px.speckle(rng, 12, 0x6f92d8, 0.4);
+  });
+  tex('blue_ice', (px, rng) => {
+    noiseFill(px, rng, P.soil.blueIce, 0.09, 3, 3);
+    crackWalk(px, rng, 3, 12, 0xd0e4ff, 0.5);
+    px.grain(rng, 0.03);
+    frameBevel(px, 0.12, 0.1);
+  });
+  for (let i = 0; i < 4; i++) {
+    derive(`frosted_ice_${i}`, 'ice', (px, rng) => {
+      crackWalk(px, rng, 2 + i * 2, 8 + i * 3, 0x8fb4ea, 0.35 + i * 0.15);
+      if (i >= 2) px.speckle(rng, i * 8, 0x6f93cc, 0.4);
+    });
+  }
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;

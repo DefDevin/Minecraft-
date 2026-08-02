@@ -1295,6 +1295,26 @@ class FallbackHud {
     }
     ctx.textAlign = 'left';
 
+    // Recent chat / system messages, fading out after ten seconds.
+    const now = this.game.elapsed;
+    ctx.font = '7px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textBaseline = 'bottom';
+    let cy = y0 - 26;
+    for (let i = this.game.chatLines.length - 1; i >= 0 && cy > 8; i--) {
+      const line = this.game.chatLines[i];
+      const age = now - line.time;
+      if (age > 10) break;
+      const a = age > 8 ? 1 - (age - 8) / 2 : 1;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(4, cy - 8, ctx.measureText(line.text).width + 4, 9);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(line.text, 6, cy);
+      ctx.globalAlpha = 1;
+      cy -= 10;
+    }
+    ctx.textBaseline = 'alphabetic';
+
     // Health and hunger
     if (p.gamemode === 0) {
       ctx.fillStyle = '#e33';
