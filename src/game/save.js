@@ -361,8 +361,11 @@ export class SaveManager {
     const world = this.game?.world;
     if (!loader?.queue || !world || this.index.size === 0) return;
     const dim = world.dimension;
+    // Only the head of the queue matters: it is distance-sorted, and this runs
+    // several times a second.
+    const scan = Math.min(loader.queue.length, 256);
     let queued = 0;
-    for (let i = 0; i < loader.queue.length && queued < limit; i++) {
+    for (let i = 0; i < scan && queued < limit; i++) {
       const job = loader.queue[i];
       const key = this.chunkId(dim, job.cx, job.cz);
       if (!this.index.has(key) || this.cache.has(key) || this.inflight.has(key)) continue;
@@ -421,11 +424,13 @@ export class SaveManager {
       existing.needsSave = false;
       existing.status = CHUNK_STATE.DECORATED;
       this.stats.lateRestores++;
+      // Back onto the streamer's queue so it re-lights and re-meshes. The
+      // queue tolerates duplicates — a chunk that is already READY is simply
+      // shifted off again.
       const loader = this.game?.loader;
-      const lkey = chunkKey(cx, cz);
-      if (loader && !loader.queued.has(lkey)) {
+      if (loader?.queue) {
         loader.queue.push({ cx, cz, d2: 0 });
-        loader.queued.add(lkey);
+        loader.queued?.add(chunkKey(cx, cz));
       }
     } catch (e) {
       this.index.delete(key);
@@ -742,8 +747,8 @@ export class SaveManager {
    */
   flushOnExit() {
     if (!this.enabled || !this.db) return;
-    this.cancelFlush();
     this.markDirtyChunks();
+    this.cancelFlush();
     this.savePlayer().catch(() => {});
     this.saveInventory().catch(() => {});
     this.saveWorldMeta().catch(() => {});
