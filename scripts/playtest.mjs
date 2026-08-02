@@ -134,6 +134,82 @@ const results = await page.evaluate(async () => {
   // --- mobs ---
   check('entities exist in world', w.entities.length >= 1, `${w.entities.length} entities`);
 
+  // --- mobs ---
+  if (g.modules.mobs?.trySpawnMobs) {
+    const before = w.entities.length;
+    w.time = 18000;           // midnight, so hostile mobs are eligible
+    for (let i = 0; i < 40; i++) g.modules.mobs.trySpawnMobs(w, p);
+    check('mobs spawn', w.entities.length > before,
+      `${w.entities.length - before} spawned`);
+    // Tick everything that spawned and make sure nothing goes NaN or throws.
+    let ticked = 0, bad = 0;
+    for (let i = 0; i < 60; i++) {
+      for (const e of [...w.entities]) {
+        if (e === p || e.removed) continue;
+        try { e.tick?.(w); ticked++; } catch (err) { bad++; }
+        if (!Number.isFinite(e.x) || !Number.isFinite(e.y)) bad++;
+      }
+    }
+    check('mobs tick without errors', bad === 0, `${ticked} ticks, ${bad} failures`);
+    w.time = 1000;
+  } else {
+    check('mob module present', false, 'mobs.js not loaded');
+  }
+
+  // --- redstone ---
+  if (g.modules.redstone?.tickRedstone) {
+    const B = await import('/src/world/blocks.js');
+    const stone = B.blocksByName.get('stone')?.defaultState;
+    const wire = B.blocksByName.get('redstone_wire')?.defaultState;
+    const torch = B.blocksByName.get('redstone_torch')?.defaultState;
+    const rx = tx + 6, ry = ty + 1, rz = tz + 6;
+    if (stone && wire && torch) {
+      for (let i = 0; i < 8; i++) w.setBlock(rx + i, ry - 1, rz, stone);
+      w.setBlock(rx, ry, rz, torch);
+      for (let i = 1; i < 8; i++) w.setBlock(rx + i, ry, rz, wire);
+      for (let i = 0; i < 12; i++) { w.tick(); g.modules.redstone.tickRedstone(w); }
+      const near = B.getProp(w.getBlock(rx + 1, ry, rz), 'power') ?? 0;
+      const far = B.getProp(w.getBlock(rx + 7, ry, rz), 'power') ?? 0;
+      check('redstone wire carries power', near > far && near > 0,
+        `power ${near} at 1 block, ${far} at 7`);
+    }
+  } else {
+    check('redstone module present', false, 'redstone.js not loaded');
+  }
+
+  // --- audio and particles are constructed, not silently skipped ---
+  if (g.modules.sound) check('sound engine constructed', !!g.sound, g.sound ? 'ok' : 'failed to construct');
+  if (g.modules.particles) {
+    check('particle system constructed', !!g.particles,
+      g.particles ? 'ok' : 'failed to construct');
+    if (g.particles) {
+      const n0 = g.particles.count ?? g.particles.particles?.length ?? 0;
+      w.spawnParticles('smoke', p.x, p.y + 1, p.z, 10);
+      const n1 = g.particles.count ?? g.particles.particles?.length ?? 0;
+      check('particles emit', n1 > n0, `${n0} -> ${n1}`);
+    }
+  }
+
+  // --- save round-trip ---
+  if (g.modules.serialization?.serializeChunk) {
+    const S = g.modules.serialization;
+    const chunk = w.getChunkAt(Math.floor(p.x), Math.floor(p.z));
+    try {
+      const buf = S.serializeChunk(chunk);
+      const back = S.deserializeChunk(w, chunk.cx, chunk.cz, buf);
+      let mismatch = 0;
+      for (let y = 40; y < 90; y += 3) {
+        for (let lz = 0; lz < 16; lz += 4) {
+          for (let lx = 0; lx < 16; lx += 4) {
+            if (back.getBlock(lx, y, lz) !== chunk.getBlock(lx, y, lz)) mismatch++;
+          }
+        }
+      }
+      check('chunk serialisation round-trips', mismatch === 0,
+        `${mismatch} mismatches, ${buf.byteLength} bytes`);
+    } catch (e) { check('chunk serialisation round-trips', false, e.message); }
+  }
+
   // --- day/night ---
   const t0 = w.time;
   for (let i = 0; i < 50; i++) w.tick();
@@ -146,7 +222,17 @@ const results = await page.evaluate(async () => {
   const hit = w.raycast(p.eyeX, p.eyeY, p.eyeZ, d2.x, d2.y, d2.z, 6);
   check('raycast hits the ground', !!hit, hit ? `${w.getBlockName(hit.x, hit.y, hit.z)} at dist ${hit.dist.toFixed(2)}` : 'miss');
 
-  return { out, modules: Object.fromEntries(Object.entries(g.modules).map(([k, v]) => [k, !!v])) };
+  return {
+    out,
+    modules: Object.fromEntries(Object.entries(g.modules).map(([k, v]) => [k, !!v])),
+    perf: {
+      fps: Math.round(g.fps),
+      chunks: w.chunks.size,
+      tris: Math.round(g.renderer.stats.triangles),
+      meshQueue: g.renderer.stats.meshQueue,
+      textures: g.renderer.atlasLayers,
+    },
+  };
 });
 
 const pass = results.out.filter((r) => r.pass).length;
@@ -154,6 +240,7 @@ console.log(`\n=== gameplay: ${pass}/${results.out.length} checks passed ===`);
 for (const r of results.out) {
   console.log(`  ${r.pass ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? `  (${r.detail})` : ''}`);
 }
+console.log(`\nperf: ${JSON.stringify(results.perf)}`);
 const loaded = Object.entries(results.modules).filter(([, v]) => v).map(([k]) => k);
 const missing = Object.entries(results.modules).filter(([, v]) => !v).map(([k]) => k);
 console.log(`\nmodules loaded (${loaded.length}): ${loaded.join(', ')}`);
