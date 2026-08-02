@@ -353,8 +353,14 @@ const painters = new Map();     // name -> painter(px, rng, name)
 const layerIndex = new Map();   // name -> layer
 const layerNames = [];          // layer -> name
 const generated = [];           // layer -> Pixels
-/** Animated textures: layer -> {frames: Pixels[], speed, interpolate} */
+/** Animated textures: base layer -> {frames, speed} */
 const animations = new Map();
+/**
+ * Upper bound on frames per animated texture. Array textures have a hard layer
+ * limit (as low as 256 in the WebGL2 spec), and animations are the only thing
+ * that scales without bound, so they are what gets trimmed when space is tight.
+ */
+let animationFrameCap = Infinity;
 
 /**
  * Register a texture painter.
@@ -407,15 +413,16 @@ export function layerOf(name) {
   }
   if (painter.animated) {
     // Animated textures occupy one layer per frame, contiguous.
+    const frameCount = Math.max(1, Math.min(painter.frameCount, animationFrameCap));
     const base = generated.length;
-    for (let f = 0; f < painter.frameCount; f++) {
+    for (let f = 0; f < frameCount; f++) {
       const px = new Pixels(TEX_SIZE);
-      painter.painter(px, new Random(hashString(name) + f * 7919), f, painter.frameCount);
+      painter.painter(px, new Random(hashString(name) + f * 7919), f, frameCount);
       generated.push(px);
       layerNames.push(`${name}#${f}`);
     }
     layerIndex.set(name, base);
-    animations.set(base, { frames: painter.frameCount, speed: painter.speed });
+    animations.set(base, { frames: frameCount, speed: painter.speed });
     return base;
   }
   l = generated.length;
@@ -441,10 +448,25 @@ function buildMissing() {
   generated.push(px);
 }
 
-/** Force-generate every registered texture (called once at startup). */
-export function generateAll() {
+/**
+ * Force-generate every registered texture (called once at startup).
+ * @param {number} [maxLayers] hard budget; animation frame counts shrink to fit.
+ */
+export function generateAll(maxLayers = Infinity) {
   buildMissing();
   const names = [...painters.keys()].sort();
+  let staticCount = 0, animFrames = 0, animCount = 0;
+  for (const n of names) {
+    const p = painters.get(n);
+    if (p.animated) { animFrames += p.frameCount; animCount++; } else staticCount++;
+  }
+  const projected = staticCount + animFrames + 1;
+  if (projected > maxLayers && animCount > 0) {
+    const budget = Math.max(animCount * 2, maxLayers - staticCount - 1);
+    animationFrameCap = Math.max(2, Math.floor(budget / animCount));
+    console.warn(`[textures] ${projected} layers exceeds the ${maxLayers} budget; ` +
+      `capping animations at ${animationFrameCap} frames each`);
+  }
   for (const n of names) layerOf(n);
   return generated.length;
 }

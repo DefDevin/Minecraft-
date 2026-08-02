@@ -66,7 +66,9 @@ export async function start() {
   mobTex?.registerMobTextures?.();
   registerFallbackTextures();
 
-  const layers = generateAll();
+  // WebGL2 guarantees only 256 array layers and desktop GPUs typically give
+  // 2048; stay under a conservative budget so the atlas always uploads.
+  const layers = generateAll(1900);
   console.info(`[textures] ${layers} layers generated`);
   boot.step(`generated ${layers} textures…`, 0.45);
   await nextFrame();
