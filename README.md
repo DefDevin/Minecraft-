@@ -2,7 +2,7 @@
 
 A voxel sandbox game written from scratch — no engine, no framework, no assets.
 Every texture, sound and terrain feature is generated procedurally at runtime by
-about 30k lines of plain JavaScript talking directly to WebGL2 and Web Audio.
+~56k lines of plain JavaScript talking directly to WebGL2 and Web Audio.
 
 ```
 node scripts/serve.mjs
@@ -37,14 +37,19 @@ come in three flavours (cheese, spaghetti, noodle) with aquifers. Ores follow th
 real y-distributions. The world runs from y=-64 to y=319 and streams in every
 direction with no boundary.
 
-**Biomes.** ~50 of them, selected by a six-parameter multi-noise lookup, each
+**Biomes.** 63 of them, selected by a six-parameter multi-noise lookup, each
 with its own surface rules, grass/foliage/water tints, mob spawn lists, features
 and weather. Plus the Nether and the End as separate dimensions.
 
-**Blocks.** Around 500 block types with real hardness, tool requirements, blast
-resistance, light emission, flammability and sounds. States are flattened to
-16-bit ids exactly like modern Minecraft, so stairs know their shape and redstone
-knows its connections.
+**Blocks.** 876 block types across 22,423 states, with real hardness, tool
+requirements, blast resistance, light emission, flammability and sounds. States
+are flattened to 16-bit ids exactly like modern Minecraft, so stairs know their
+shape and redstone knows its connections.
+
+**Items and crafting.** 1,213 items and 604 crafting recipes with tag
+ingredients (one recipe covers all ten wood types), plus 90 smelting recipes
+across furnace/blast furnace/smoker, stonecutting, netherite smithing and the
+full brewing ingredient graph.
 
 **Simulation.** Water and lava flow and interact; sand falls; fire spreads; crops
 grow on hydrated farmland; leaves decay; grass spreads; ice forms and melts.
@@ -52,9 +57,11 @@ Redstone has dust with proper power decay, torches, repeaters with locking,
 comparators, observers, pistons with the 12-block push limit, and a tick-ordered
 update queue.
 
-**Mobs.** Hostile and passive mobs with goal-based AI, A* pathfinding over the
-voxel grid, breeding, taming, trading and boss fights — all rendered from
-box-based models with the standard Minecraft animation set.
+**Mobs.** 73 species with goal-based AI, A* pathfinding over the voxel grid,
+natural spawning under Minecraft's real rules (pack spawning, light-level checks,
+per-category caps, despawn distance), breeding, taming, shearing, milking and
+trading — all rendered from box models whose skins are derived procedurally from
+each model's own UV layout.
 
 **Survival.** Health, hunger, saturation and exhaustion; armour with the real
 damage-reduction formula; the full status-effect list; enchanting with bookshelf
@@ -99,6 +106,23 @@ buffers. The entire game is the source code.
 or throws while registering, the game logs it once and runs with a reduced
 feature set rather than failing to start — and a subsystem that throws during a
 tick is disabled instead of failing twenty times a second.
+
+## Known gaps
+
+Honest accounting of what is not finished:
+
+* **HUD and menus** run on the engine's built-in fallbacks — a working hotbar,
+  hearts, hunger, chat and death screen, but not the full styled versions. The
+  widget toolkit (`ui/screen.js`) and every container screen (`ui/containers.js`)
+  are complete; the title screen, options screen and creative-inventory tabs are
+  not wired up.
+* **Weather rendering** (falling rain/snow geometry and lightning bolts) is
+  missing. The weather *simulation* runs — rain and thunder cycles, sky and fog
+  changes, `isRainingAt` — only the visual layer is absent.
+* **Block textures** cover ~630 of the 697 names blocks reference. The Nether,
+  End and redstone groups fall back to procedurally-derived colours, which look
+  plausible but are not hand-pixelled.
+* Terrain from the generator is noticeably terraced on slopes.
 
 ## Verification
 
