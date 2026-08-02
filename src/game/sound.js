@@ -161,13 +161,29 @@ function tone(V, o) {
   const g = ctx.createGain();
   osc.connect(g);
   let node = g;
-  if (o.filter) node = attachFilter(ctx, g, o, V.pitch, t0, dur);
+  if (o.filter) node = attachFilter(ctx, g, filterSpec(o), V.pitch, t0, dur);
   node.connect(o.out || V.out);
   const end = envelope(g.gain, t0, o.gain ?? 0.3, o.attack ?? 0.004, dur,
     o.hold ?? 0, o.curve);
   osc.start(t0);
   osc.stop(end + 0.02);
   return end + 0.02;
+}
+
+/**
+ * Tonal generators take their oscillator pitch from `freq`/`freq2`, so a filter
+ * on top needs its own frequencies — `filterFreq`/`filterFreq2`/`filterQ`.
+ * Absent those, the filter sits well above the fundamental so it colours the
+ * harmonics instead of swallowing the note.
+ */
+function filterSpec(o) {
+  return {
+    filter: o.filter,
+    freq: o.filterFreq ?? (o.freq ?? 440) * 4,
+    freq2: o.filterFreq2,
+    q: o.filterQ ?? o.q ?? 1,
+    sweep: o.filterSweep,
+  };
 }
 
 /** Two-operator FM — the cheapest way to get bells, mallets and brassy horns. */
@@ -192,7 +208,7 @@ function fm(V, o) {
   const g = ctx.createGain();
   carrier.connect(g);
   let node = g;
-  if (o.filter) node = attachFilter(ctx, g, o, V.pitch, t0, dur);
+  if (o.filter) node = attachFilter(ctx, g, filterSpec(o), V.pitch, t0, dur);
   node.connect(o.out || V.out);
   const end = envelope(g.gain, t0, o.gain ?? 0.25, o.attack ?? 0.003, dur, o.hold ?? 0);
   carrier.start(t0); mod.start(t0);
@@ -232,7 +248,7 @@ function noise(V, o) {
 function attachFilter(ctx, input, o, pitch, t0, dur) {
   const bq = ctx.createBiquadFilter();
   bq.type = o.filter === true ? 'lowpass' : o.filter;
-  const f0 = Math.max(20, (o.freq ?? 1000) * (o.filterTracksPitch === false ? 1 : pitch));
+  const f0 = Math.max(20, (o.freq ?? 1000) * pitch);
   bq.frequency.setValueAtTime(Math.min(f0, 20000), t0);
   if (o.freq2 !== undefined) {
     const f1 = Math.max(20, Math.min(20000, o.freq2 * pitch));
@@ -365,7 +381,7 @@ define('dig.loop', 'blocks', familyDig(FAMILY.stone), { gain: 0.6, range: 16, gr
 
 define('item.pickup', 'players', (V) => {
   tone(V, { type: 'square', freq: 620, freq2: 1240, dur: 0.09, gain: 0.10,
-    filter: 'lowpass', q: 1 });
+    filter: 'lowpass', filterFreq: 2600, filterQ: 1 });
   tone(V, { type: 'sine', freq: 940, freq2: 1560, dur: 0.11, gain: 0.09, delay: 0.02 });
 }, { gain: 0.8, range: 12 });
 
@@ -407,7 +423,7 @@ define('ui.craft', 'ui', (V) => {
 
 define('ui.click', 'ui', (V) => {
   tone(V, { type: 'square', freq: 900, freq2: 640, dur: 0.05, gain: 0.09,
-    filter: 'lowpass', q: 0.7 });
+    filter: 'lowpass', filterFreq: 3200, filterQ: 0.7 });
 }, { gain: 0.7, range: 8, reverb: 0 });
 
 // --- doors, gates, chests, buttons ----------------------------------------
