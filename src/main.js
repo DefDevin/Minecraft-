@@ -177,9 +177,15 @@ export async function start() {
     await nextFrame();
     boot.step('building terrain…', 0.88 + r * 0.02);
   }
-  // Drop the player onto the surface in case decoration raised the ground.
-  const surface = game.world.surfaceAt(Math.floor(p.x), Math.floor(p.z));
-  if (surface > MIN_SAFE_Y) { p.y = surface + 1; p.prevY = p.y; p.updateBounds(); }
+  // Decoration may have raised the ground under the chosen spawn, so settle the
+  // player onto it — but only when that surface is dry, or we would drop them
+  // to the bottom of an ocean.
+  const { T: BT } = await import('./world/blocks.js');
+  const sx = Math.floor(p.x), sz = Math.floor(p.z);
+  const surface = game.world.surfaceAt(sx, sz);
+  if (surface > MIN_SAFE_Y && !BT.fluid[game.world.getBlock(sx, surface + 1, sz)]) {
+    p.y = surface + 1; p.prevY = p.y; p.updateBounds();
+  }
 
   if (game.player.gamemode === GAMEMODE.CREATIVE) {
     game.player.canFly = true;

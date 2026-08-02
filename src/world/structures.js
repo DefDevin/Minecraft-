@@ -1323,7 +1323,7 @@ function buildMineshaft(world, writer, layout, rng) {
     const x0 = Math.min(c.x, c.ex) - 2, x1 = Math.max(c.x, c.ex) + 2;
     const z0 = Math.min(c.z, c.ez) - 2, z1 = Math.max(c.z, c.ez) + 2;
     if (!writer.hits(x0, z0, x1, z1)) continue;
-    const cRng = new Random(hash3(world.seed ^ 0x91ne, c.x, c.y, c.z) | 0);
+    const cRng = new Random(hash3(world.seed ^ 0x91e5, c.x, c.y, c.z) | 0);
     const dx = FDX[c.dir], dz = FDZ[c.dir];
     const len = Math.abs(c.ex - c.x) + Math.abs(c.ez - c.z);
     const across = dx !== 0 ? [0, 1] : [1, 0];

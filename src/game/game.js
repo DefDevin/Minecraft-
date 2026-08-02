@@ -186,7 +186,10 @@ export class Game {
 
   async findSpawn() {
     const w = this.world;
-    for (let r = 0; r < 12; r++) {
+    // Remember the best dry-ish column seen, so an origin surrounded by ocean
+    // still lands the player on a beach rather than the sea floor.
+    let best = null;
+    for (let r = 0; r < 28; r++) {
       for (let i = 0; i < (r === 0 ? 1 : r * 8); i++) {
         const a = (i / Math.max(1, r * 8)) * Math.PI * 2;
         const cx = Math.round(Math.cos(a) * r);
@@ -198,15 +201,23 @@ export class Game {
           for (let lx = 2; lx < 14; lx += 3) {
             const h = chunk.surfaceHeight(lx, lz);
             if (h < SEA_LEVEL) continue;
-            const above = w.getBlock(chunk.x0 + lx, h + 1, chunk.z0 + lz);
-            if (T.fluid[above]) continue;
-            if (T.solid[above]) continue;
-            return { x: chunk.x0 + lx + 0.5, y: h + 1, z: chunk.z0 + lz + 0.5 };
+            const x = chunk.x0 + lx, z = chunk.z0 + lz;
+            // The block underfoot must be solid land, and the two above clear.
+            if (T.fluid[w.getBlock(x, h, z)]) continue;
+            if (!T.solid[w.getBlock(x, h, z)]) continue;
+            const above = w.getBlock(x, h + 1, z);
+            const above2 = w.getBlock(x, h + 2, z);
+            if (T.fluid[above] || T.solid[above] || T.solid[above2]) continue;
+            const spot = { x: x + 0.5, y: h + 1, z: z + 0.5 };
+            if (h > SEA_LEVEL) return spot;      // comfortably above the water
+            if (!best) best = spot;              // a beach will do
           }
         }
       }
+      // Stop widening once we have something usable and have searched a while.
+      if (best && r > 8) return best;
     }
-    return { x: 0.5, y: 90, z: 0.5 };
+    return best ?? { x: 0.5, y: 90, z: 0.5 };
   }
 
   // -- Loop ----------------------------------------------------------------
