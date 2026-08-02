@@ -245,7 +245,11 @@ export class World {
     return 0.2 + f * 0.8;
   }
 
-  /** 0..1 through the day: 0 = sunrise, 0.25 = noon, 0.75 = midnight. */
+  /**
+   * Minecraft's celestial angle: 0 at noon, 0.25 at sunset, 0.5 at midnight,
+   * 0.75 at sunrise. The easing term is what makes the sun linger near the
+   * horizon at dawn and dusk instead of sweeping past at a constant rate.
+   */
   celestialAngle() {
     const t = ((this.time % this.dayLength) + this.dayLength) % this.dayLength;
     let a = t / this.dayLength - 0.25;

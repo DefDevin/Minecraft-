@@ -51,11 +51,12 @@ export class Environment {
     const rain = world.rainLevel;
     const thunder = world.thunderLevel;
 
-    // Sun direction: rises in the east, sets in the west, tilted slightly so it
-    // does not pass exactly overhead.
+    // Sun direction. `celestialAngle` is 0 at noon, 0.25 at sunset, 0.5 at
+    // midnight, so elevation follows the cosine and the east-west sweep the
+    // sine. A small Z tilt keeps it from passing exactly through the zenith.
     const a = angle * Math.PI * 2;
-    const sunY = Math.sin(a);
-    const sunX = Math.cos(a);
+    const sunY = Math.cos(a);
+    const sunX = Math.sin(a);
     const len = Math.hypot(sunX, sunY);
     renderer.sunDir = { x: sunX / len * 0.94, y: sunY / len, z: 0.34 * sunX / len };
 

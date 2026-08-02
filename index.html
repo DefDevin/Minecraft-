@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Minecraft</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: #000;
+    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: none;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The 3D scene renders here; the GUI is a transparent 2D canvas on top. */
+  #gl { z-index: 1; }
+  #gui { z-index: 2; image-rendering: pixelated; }
+  #crosshair-hint { z-index: 3; }
+
+  #boot {
+    position: fixed; inset: 0; z-index: 100; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: #14181f; color: #e8e8e8; gap: 18px;
+    transition: opacity .45s ease; text-align: center; padding: 24px;
+  }
+  #boot.hidden { opacity: 0; pointer-events: none; }
+  #boot h1 {
+    font-size: 40px; letter-spacing: 3px; font-weight: 700;
+    text-shadow: 3px 3px 0 #2b2b2b; color: #ddd;
+  }
+  #boot .sub { font-size: 13px; color: #8b93a1; letter-spacing: 1px; }
+  #bar {
+    width: min(440px, 80vw); height: 14px; border: 2px solid #6b6b6b;
+    background: #202020; padding: 2px;
+  }
+  #bar > div {
+    height: 100%; width: 0%; background: linear-gradient(#7ec850, #4e8a2f);
+    transition: width .18s ease;
+  }
+  #boot .step { font-size: 12px; color: #a8b0bd; min-height: 16px; }
+  #boot .err {
+    color: #ff8080; font-size: 12px; max-width: 640px; white-space: pre-wrap;
+    text-align: left; font-family: ui-monospace, Menlo, Consolas, monospace;
+    max-height: 40vh; overflow: auto;
+  }
+  #nogl { display: none; color: #ff9a9a; max-width: 560px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <canvas id="gui"></canvas>
+</div>
+
+<div id="boot">
+  <h1>MINECRAFT</h1>
+  <div class="sub">a voxel world, generated from nothing</div>
+  <div id="bar"><div id="bar-fill"></div></div>
+  <div class="step" id="boot-step">starting…</div>
+  <div class="err" id="boot-err"></div>
+  <div id="nogl">
+    This game needs <b>WebGL2</b>, which this browser or device does not provide.
+    Try a recent desktop Chrome, Edge, Firefox or Safari.
+  </div>
+</div>
+
+<script type="module">
+  const stepEl = document.getElementById('boot-step');
+  const fillEl = document.getElementById('bar-fill');
+  const errEl = document.getElementById('boot-err');
+
+  window.__boot = {
+    step(text, pct) {
+      stepEl.textContent = text;
+      if (pct != null) fillEl.style.width = `${Math.round(pct * 100)}%`;
+    },
+    fail(err) {
+      stepEl.textContent = 'failed to start';
+      errEl.textContent = (err && (err.stack || err.message)) || String(err);
+      console.error(err);
+    },
+    done() {
+      document.getElementById('boot').classList.add('hidden');
+    },
+  };
+
+  // Fail fast with a readable message rather than a blank canvas.
+  const probe = document.createElement('canvas').getContext('webgl2');
+  if (!probe) {
+    document.getElementById('nogl').style.display = 'block';
+    document.getElementById('bar').style.display = 'none';
+    stepEl.textContent = '';
+  } else {
+    import('./src/main.js')
+      .then((m) => m.boot())
+      .catch((e) => window.__boot.fail(e));
+  }
+</script>
+</body>
+</html>
