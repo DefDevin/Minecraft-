@@ -121,11 +121,45 @@ export class Renderer {
 
   /** Upload the generated texture array. Call after all textures register. */
   uploadTextures() {
+    const gl = this.gl;
     const packed = packLayers();
-    this.atlas = createTextureArray(this.gl, packed);
+    this.atlas = createTextureArray(gl, packed);
     this.atlasLayers = packed.layers;
     this.animations = animationInfo();
+
+    // Identity remap; animated ranges are rewritten each tick by
+    // `updateAnimations`. R16UI keeps it exact for up to 65535 layers.
+    this.layerRemap = new Uint16Array(Math.max(1, packed.layers));
+    for (let i = 0; i < packed.layers; i++) this.layerRemap[i] = i;
+    this.layerRemapTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.layerRemapTex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R16UI, this.layerRemap.length, 1);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.uploadLayerRemap();
     return packed.layers;
+  }
+
+  uploadLayerRemap() {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.layerRemapTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.layerRemap.length, 1,
+      gl.RED_INTEGER, gl.UNSIGNED_SHORT, this.layerRemap);
+  }
+
+  /** Advance animated textures. `ticks` is the world tick counter. */
+  updateAnimations(ticks) {
+    if (!this.animations || this.animations.size === 0) return;
+    let changed = false;
+    for (const [base, info] of this.animations) {
+      const frame = Math.floor(ticks / Math.max(1, info.speed)) % info.frames;
+      const target = base + frame;
+      if (this.layerRemap[base] !== target) { this.layerRemap[base] = target; changed = true; }
+    }
+    if (changed) this.uploadLayerRemap();
   }
 
   /** Upload one mob/GUI sheet, returning a texture handle. */
@@ -589,6 +623,10 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.atlas);
     gl.uniform1i(P.uniforms.uAtlas, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.layerRemapTex);
+    gl.uniform1i(P.uniforms.uLayerRemap, 1);
+    gl.activeTexture(gl.TEXTURE0);
     gl.uniformMatrix4fv(P.uniforms.uViewProj, false, this.viewProj);
     gl.uniform3f(P.uniforms.uCameraPos, this.cameraPos.x, this.cameraPos.y, this.cameraPos.z);
     gl.uniform1f(P.uniforms.uSkyBrightness, this.skyBrightness);
@@ -691,6 +729,10 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.atlas);
     gl.uniform1i(P.uniforms.uAtlas, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.layerRemapTex);
+    gl.uniform1i(P.uniforms.uLayerRemap, 1);
+    gl.activeTexture(gl.TEXTURE0);
     gl.uniformMatrix4fv(P.uniforms.uViewProj, false, this.viewProj);
     gl.uniform3f(P.uniforms.uOffset, x, y, z);
     gl.uniform1f(P.uniforms.uLayer, layerOf(`destroy_stage_${stage}`));

@@ -785,6 +785,7 @@ export class Game {
     // Streaming and meshing share whatever is left of the frame. When the mesh
     // backlog grows, generation yields time to it — terrain the player can
     // actually see matters more than terrain queued behind it.
+    r.updateAnimations(this.world.tickCount);
     const backlog = r.stats.meshQueue;
     const meshBudget = backlog > 400 ? 10 : backlog > 120 ? 8 : 5;
     const loadBudget = backlog > 400 ? 2 : backlog > 120 ? 4 : 7;

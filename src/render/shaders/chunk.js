@@ -78,6 +78,10 @@ flat in float vEmissive;
 in vec3 vTintColor;
 
 uniform sampler2DArray uAtlas;
+// Maps a baked texture layer to the layer that should be sampled right now.
+// Static textures map to themselves; animated ones step through their frames,
+// which is how water, lava, fire and portals move without remeshing anything.
+uniform highp usampler2D uLayerRemap;
 uniform vec3 uCameraPos;
 uniform float uSkyBrightness;   // 0..1 daylight factor
 uniform vec3 uFogColor;
@@ -105,7 +109,8 @@ float lightCurve(float level) {
 }
 
 void main() {
-  vec4 tex = texture(uAtlas, vec3(vUV, vLayer));
+  float layer = float(texelFetch(uLayerRemap, ivec2(int(vLayer + 0.5), 0), 0).r);
+  vec4 tex = texture(uAtlas, vec3(vUV, layer));
   if (tex.a < uAlphaCutoff) discard;
 
   vec3 color = tex.rgb;
