@@ -76,6 +76,20 @@ export function installHooks(game) {
       return M.containers?.useChiseledBookshelf?.(world, x, y, z, state, player, hit) ?? false;
     },
 
+    openSignEditor(world, x, y, z, player) {
+      const Screen = M.containers?.SignEditScreen;
+      if (!Screen) return false;
+      game.pushScreen(new Screen(game, world.getBlockEntity(x, y, z), x, y, z));
+      return true;
+    },
+
+    ringBell(world, x, y, z, player, face) {
+      world.playSound('block.bell', x + 0.5, y + 0.5, z + 0.5, 2, 1);
+      const be = world.getBlockEntity(x, y, z);
+      if (be) { be.ringTicks = 50; be.ringFace = face; }
+      return true;
+    },
+
     /** Put a plant into a flower pot, or take it out. */
     potPlant(world, x, y, z, player) {
       const stack = player.heldItem?.();
@@ -130,6 +144,11 @@ export function installHooks(game) {
 
   game.damage = {
     onCactusContact(world, entity) { hurt(entity, 1, 'cactus'); },
+    onFire(world, entity) {
+      if (entity?.effects?.has?.('fire_resistance')) return;
+      hurt(entity, 1, 'fire');
+      if (entity) entity.fireTicks = Math.max(entity.fireTicks ?? 0, 160);
+    },
     onBerryBush(world, entity) {
       // Only damages you if you are actually moving through it.
       if (Math.abs(entity.vx ?? 0) + Math.abs(entity.vz ?? 0) > 0.003) hurt(entity, 1, 'berry_bush');
@@ -173,6 +192,21 @@ export function installHooks(game) {
       if (M.effects?.apply) M.effects.apply(entity, id, duration, amplifier);
       else if (entity?.effects) entity.effects.set(id, { amplifier, duration });
     },
+    /** Punching a dragon egg teleports it a short distance away. */
+    teleportDragonEgg(world, x, y, z, state) {
+      const r = world.random;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const nx = x + r.intRange(-15, 15);
+        const ny = y + r.intRange(-7, 7);
+        const nz = z + r.intRange(-15, 15);
+        if (world.getBlock(nx, ny, nz) !== 0) continue;
+        world.setBlock(x, y, z, 0);
+        world.setBlock(nx, ny, nz, state);
+        world.spawnParticles('portal', x + 0.5, y + 0.5, z + 0.5, 24);
+        return true;
+      }
+      return false;
+    },
   };
 
   // -- Audio ---------------------------------------------------------------
@@ -194,6 +228,23 @@ export function installHooks(game) {
   game.fluids = M.fluids?.hooks ?? M.fluids ?? null;
   game.features = M.features ?? null;
   game.physics = {
+    onCobweb(world, entity) {
+      if (!entity) return;
+      entity.vx *= 0.25; entity.vz *= 0.25;
+      if (entity.vy < 0) entity.vy *= 0.05;
+      entity.inCobweb = true;
+    },
+    onSlime(world, entity) {
+      // Bounce, unless the entity is sneaking.
+      if (!entity || entity.sneaking) return;
+      if (entity.vy < -0.1) { entity.vy = -entity.vy * 0.8; entity.fallDistance = 0; }
+    },
+    onHoney(world, entity) {
+      if (!entity) return;
+      entity.vx *= 0.6; entity.vz *= 0.6;
+      if (entity.vy < -0.08) entity.vy = -0.05;   // slow slide down honey walls
+      entity.fallDistance = 0;
+    },
     /** Start a falling-block entity for sand, gravel and concrete powder. */
     startFalling(world, x, y, z, state) {
       const E = M.itemEntity?.FallingBlockEntity;
@@ -211,17 +262,42 @@ export function installHooks(game) {
     lightPortal(world, x, y, z) {
       return M.features?.lightNetherPortal?.(world, x, y, z) ?? false;
     },
+    /** Standing in a portal builds up until the player is pulled through. */
+    onPortal(world, x, y, z, entity, kind) {
+      if (!entity?.isPlayer) return;
+      entity.inPortal = true;
+      if (entity.portalTime >= 1) {
+        game.travelToDimension?.(entity, kind === 'end' ? 'end' : 'nether');
+        entity.portalTime = 0;
+      }
+    },
+    onGateway(world, x, y, z, entity) {
+      game.travelToDimension?.(entity, 'end');
+    },
   };
   game.crafting = {
     compost(world, x, y, z, state, player, hand) {
       return M.farming?.compost?.(world, x, y, z, state, player, hand) ?? false;
     },
+    useCampfire(world, x, y, z, state, player, hand) {
+      return M.blockEntity?.useCampfire?.(world, x, y, z, state, player, hand) ?? false;
+    },
   };
   game.fire = {
     trySpread(world, x, y, z) { return M.fluids?.trySpreadFire?.(world, x, y, z) ?? false; },
+    tick(world, x, y, z, state, random) {
+      return M.fluids?.tickFire?.(world, x, y, z, state, random) ?? false;
+    },
+    spreadFromLava(world, x, y, z) {
+      return M.fluids?.spreadFireFromLava?.(world, x, y, z) ?? false;
+    },
   };
   game.spawn = {
     setRespawn(player, x, y, z) { player.spawnPoint = { x: x + 0.5, y: y + 1, z: z + 0.5 }; },
+    useRespawnAnchor(world, x, y, z, state, player, hand) {
+      // Charging with glowstone, or setting the Nether spawn if already charged.
+      return M.survival?.useRespawnAnchor?.(world, x, y, z, state, player, hand) ?? false;
+    },
   };
   game.sleep = {
     trySleep(world, x, y, z, player) {
@@ -236,11 +312,39 @@ export function installHooks(game) {
   };
   game.food = {
     eat(world, player, stack) { game.startEating(stack); return true; },
+    eatCake(world, x, y, z, state, player) {
+      if (player.food >= 20) return false;
+      player.food = Math.min(20, player.food + 2);
+      player.saturation = Math.min(player.food, player.saturation + 0.4);
+      const bites = (M.blockdefs?.cakeBites?.(state) ?? 0) + 1;
+      if (bites > 6) world.setBlock(x, y, z, 0);
+      else {
+        const next = M.blockdefs?.cakeWithBites?.(state, bites);
+        if (next != null) world.setBlock(x, y, z, next);
+        else world.setBlock(x, y, z, 0);
+      }
+      world.playSound('player.burp', player.x, player.y, player.z);
+      return true;
+    },
   };
-  game.explosions = game.damage;
+  game.explosions = Object.assign({
+    primeTnt(world, x, y, z, igniter) {
+      const E = M.itemEntity?.PrimedTnt;
+      if (E) {
+        world.setBlock(x, y, z, 0);
+        world.addEntity(new E(world, x + 0.5, y, z + 0.5, igniter));
+        world.playSound('tnt.prime', x + 0.5, y + 0.5, z + 0.5);
+        return true;
+      }
+      // Without the entity module, detonate on the spot.
+      world.setBlock(x, y, z, 0);
+      M.combat?.explode?.(world, x + 0.5, y + 0.5, z + 0.5, 4, { fire: false });
+      return true;
+    },
+  }, game.damage);
   game.warden = {
-    onShriek() { /* the warden module wires itself in when present */ },
-    onSculkSensor() {},
+    onShriek(world, x, y, z, player) { M.mobs?.onSculkShriek?.(world, x, y, z, player); },
+    onShriekEnd(world, x, y, z) { M.mobs?.onSculkShriekEnd?.(world, x, y, z); },
   };
 
   return game;
