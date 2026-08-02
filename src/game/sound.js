@@ -436,7 +436,7 @@ function creak(up) {
       dur: 0.42, gain: 0.20, attack: 0.03, sweep: 'exp' });
     noise(V, { color: 'white', filter: 'bandpass', freq: 1800, q: 2, dur: 0.07,
       gain: 0.10, delay: 0.38 });
-    thump(V, 150, 0.2, 0.16, 0.4);
+    thump(V, 150, 0.2, 0.16);
   };
 }
 
@@ -479,8 +479,8 @@ define('piston.extend', 'blocks', (V) => {
   noise(V, { color: 'brown', filter: 'bandpass', freq: 500, freq2: 1200, q: 2.5,
     dur: 0.18, gain: 0.22, attack: 0.01 });
   tone(V, { type: 'sawtooth', freq: 180, freq2: 300, dur: 0.16, gain: 0.07,
-    filter: 'lowpass', freq2Filter: 0 });
-  thump(V, 120, 0.12, 0.16, 0.16);
+    filter: 'lowpass', filterFreq: 1400, filterFreq2: 600 });
+  thump(V, 120, 0.12, 0.16);
 }, { gain: 0.9, range: 20 });
 
 define('piston.retract', 'blocks', (V) => {
