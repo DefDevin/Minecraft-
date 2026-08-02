@@ -303,18 +303,50 @@ export class Game {
       const e = world.entities[i];
       if (e === player) continue;
       if (e.removed) { world.entities.splice(i, 1); continue; }
-      e.tick?.(world);
+      try {
+        e.tick?.(world);
+      } catch (err) {
+        // One misbehaving entity must not stop the world; drop it and log once.
+        this.reportOnce(`entity:${e.type ?? e.constructor?.name}`, err);
+        world.removeEntity(e);
+      }
     }
 
-    this.modules.blockEntity?.tickBlockEntities?.(world);
-    this.modules.redstone?.tickRedstone?.(world);
-    this.modules.survival?.tickPlayer?.(player, world);
-    if (!this.modules.survival) this.tickHungerFallback(player);
-    if (world.tickCount % 20 === 0) {
-      this.modules.mobs?.trySpawnMobs?.(world, player);
+    this.safe('blockEntities', () => this.modules.blockEntity?.tickBlockEntities?.(world));
+    this.safe('redstone', () => this.modules.redstone?.tickRedstone?.(world));
+    this.safe('fluids', () => this.modules.fluids?.tick?.(world));
+    if (this.modules.survival) {
+      this.safe('survival', () => this.modules.survival.tickPlayer(player, world));
+    } else {
+      this.tickHungerFallback(player);
     }
-    this.modules.farming?.tick?.(world);
-    this.weather?.tick?.(world);
+    if (world.tickCount % 20 === 0) {
+      this.safe('mobSpawning', () => this.modules.mobs?.trySpawnMobs?.(world, player));
+    }
+    this.safe('farming', () => this.modules.farming?.tick?.(world));
+    this.safe('weather', () => this.weather?.tick?.(world));
+  }
+
+  /**
+   * Run a subsystem tick, logging the first failure per subsystem and then
+   * disabling it, rather than throwing twenty times a second.
+   */
+  safe(name, fn) {
+    if (this.brokenSystems?.has(name)) return;
+    try {
+      fn();
+    } catch (e) {
+      (this.brokenSystems ??= new Set()).add(name);
+      console.error(`[${name}] disabled after an error:`, e);
+      this.chat(`${name} disabled after an error (see console)`);
+    }
+  }
+
+  reportOnce(key, err) {
+    (this.reported ??= new Set());
+    if (this.reported.has(key)) return;
+    this.reported.add(key);
+    console.error(`[${key}]`, err);
   }
 
   /** Minimal hunger/regen so survival works before survival.js is wired in. */
