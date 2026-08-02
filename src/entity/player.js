@@ -561,8 +561,9 @@ export class Player {
     for (let y = Math.floor(box.minY); y <= Math.floor(box.maxY); y++) {
       for (let z = Math.floor(box.minZ); z <= Math.floor(box.maxZ); z++) {
         for (let x = Math.floor(box.minX); x <= Math.floor(box.maxX); x++) {
-          const d = blockOf(w.getBlock(x, y, z));
-          if (d?.onEntityInside) d.onEntityInside(w, x, y, z, this);
+          const st = w.getBlock(x, y, z);
+          const d = blockOf(st);
+          if (d?.onEntityInside) d.onEntityInside(w, x, y, z, st, this);
         }
       }
     }

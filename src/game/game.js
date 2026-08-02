@@ -511,9 +511,7 @@ export class Game {
 
     let drops;
     if (def.getDrops) {
-      drops = def.getDrops(state, tool, fortune, silk, world.random) || [];
-    } else if (silk && def.item) {
-      drops = [{ item: def.item, count: 1 }];
+      drops = def.getDrops(world, x, y, z, state, tool, world.random) || [];
     } else if (def.item) {
       drops = [{ item: def.item, count: 1 }];
     } else {
@@ -558,7 +556,7 @@ export class Game {
       const def = blockOf(state);
       // Sneaking suppresses block interaction so you can place against a chest.
       if (def?.onUse && !p.sneaking) {
-        const used = def.onUse(this.world, hit.x, hit.y, hit.z, state, p, stack);
+        const used = def.onUse(this.world, hit.x, hit.y, hit.z, state, p, stack, hit);
         if (used) { p.swing(); return; }
       }
     }
@@ -592,8 +590,9 @@ export class Game {
     if (def.stateForPlacement) {
       state = def.stateForPlacement(world, x, y, z, {
         face: hit.face, facing: yawToFacing(p.yaw), player: p,
+        yaw: p.yaw, pitch: p.pitch,
         hitX: hit.px - x, hitY: hit.py - y, hitZ: hit.pz - z,
-        sneaking: p.sneaking,
+        sneaking: p.sneaking, stack,
       });
       if (state == null) return;
     }
