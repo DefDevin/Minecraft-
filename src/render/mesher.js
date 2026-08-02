@@ -240,7 +240,8 @@ class MeshBuilder {
       let cap = this.capacity;
       while (cap < this.vertexCount + extraVerts) cap *= 2;
       const buf = new ArrayBuffer(cap * VERTEX_BYTES);
-      new Uint8Array(buf).set(new Uint8Array(this.buffer, 0, this.vertexCount * VERTEX_BYTES));
+      const used = Math.min(this.vertexCount * VERTEX_BYTES, this.buffer.byteLength);
+      new Uint8Array(buf).set(new Uint8Array(this.buffer, 0, used));
       this.buffer = buf;
       this.f32 = new Float32Array(buf);
       this.u32 = new Uint32Array(buf);
@@ -792,7 +793,8 @@ function fluidPass(x, y, z, state) {
 
   // Top surface
   if (!sameAbove && fluidFaceVisible(fluid, above)) {
-    mb.ensure(4, 6);
+    // Two quads: the surface and its underside, seen from below the waterline.
+    mb.ensure(8, 12);
     const a = mb.vertex(x, y + h01, z + 1, 0, 1, topFace.layer, packed, color);
     const b = mb.vertex(x + 1, y + h11, z + 1, 1, 1, topFace.layer, packed, color);
     const c = mb.vertex(x + 1, y + h10, z, 1, 0, topFace.layer, packed, color);

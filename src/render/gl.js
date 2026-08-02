@@ -105,9 +105,20 @@ export function createSheetTexture(gl, sheet, opts = {}) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  // Sheets come from several modules, so do not trust that `data` is exactly
+  // width*height*4 bytes — a short buffer would otherwise throw out of the
+  // typed-array constructor and take the frame down.
+  const need = sheet.width * sheet.height * 4;
+  let bytes;
+  if (sheet.data instanceof Uint8Array && sheet.data.length === need) {
+    bytes = sheet.data;
+  } else {
+    bytes = new Uint8Array(need);
+    const src = sheet.data;
+    bytes.set(src.length > need ? src.subarray(0, need) : src);
+  }
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, sheet.width, sheet.height, 0,
-    gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(sheet.data.buffer, sheet.data.byteOffset,
-      sheet.data.length));
+    gl.RGBA, gl.UNSIGNED_BYTE, bytes);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, opts.wrap || gl.CLAMP_TO_EDGE);

@@ -583,9 +583,21 @@ export class Game {
     if (xp > 0) this.modules.experience?.spawnOrbs?.(world, x + 0.5, y + 0.5, z + 0.5, xp);
   }
 
+  /** Live dropped-item entities are capped so a runaway never floods the world. */
+  static MAX_ITEM_ENTITIES = 400;
+
   spawnItem(world, x, y, z, stack) {
     const M = this.modules;
     if (M.itemEntity?.ItemEntity) {
+      // Over the cap, retire the oldest drop rather than refusing the new one —
+      // the item the player just made should always appear.
+      let items = 0, oldest = null;
+      for (const e of world.entities) {
+        if (e.renderKind !== 'item') continue;
+        items++;
+        if (!oldest || (e.ageTicks ?? 0) > (oldest.ageTicks ?? 0)) oldest = e;
+      }
+      if (items >= Game.MAX_ITEM_ENTITIES && oldest) world.removeEntity(oldest);
       const e = new M.itemEntity.ItemEntity(world, x, y, z, stack);
       world.addEntity(e);
       return e;

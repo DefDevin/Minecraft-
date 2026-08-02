@@ -278,7 +278,11 @@ export class World {
     const def = blockOf(st);
     if (!def) return;
     if (def.canSurvive && !def.canSurvive(this, x, y, z, st)) {
-      this.destroyBlock(x, y, z, true);
+      // During generation a feature may briefly place a plant before its
+      // support exists. Those self-corrections must not litter the world with
+      // thousands of item entities, so only drop once the chunk is live.
+      const chunk = this.getChunkAt(x, z);
+      this.destroyBlock(x, y, z, chunk ? chunk.status >= 4 : false);
       return;
     }
     if (def.updateShape) {

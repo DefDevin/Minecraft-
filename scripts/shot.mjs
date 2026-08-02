@@ -30,7 +30,7 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errs = [];
-page.on('pageerror', (e) => errs.push(e.message));
+page.on('pageerror', (e) => errs.push(`${e.message}\n${(e.stack||'').split('\n').slice(1,5).join('\n')}`));
 await page.goto(`http://127.0.0.1:${port}/?seed=${seed}&mode=creative`, { waitUntil: 'load' });
 await page.waitForFunction(() => window.game?.running, { timeout: 180000 });
 
@@ -47,6 +47,20 @@ await page.evaluate(([h, p]) => {
   g.settings.renderDistance = 12;
 }, [height, pitch]);
 
+if (process.env.MOBS) {
+  await page.evaluate(async (list) => {
+    const g = window.game, p = g.player;
+    const M = g.modules.mobs;
+    const names = list.split(',');
+    names.forEach((n, i) => {
+      const a = (i / names.length) * Math.PI * 2;
+      const x = p.x + Math.cos(a) * 6, z = p.z + Math.sin(a) * 6;
+      const y = g.world.standingYAt(Math.floor(x), Math.floor(z), Math.floor(p.y) + 8);
+      if (y != null) M.spawn(g.world, n, x, y, z, { persistent: true });
+    });
+  }, process.env.MOBS);
+}
+
 await page.waitForTimeout(Number(wait));
 // Hide the HUD so the shot is just the world.
 await page.evaluate(() => { document.getElementById('gui').style.display = 'none'; });
@@ -60,6 +74,9 @@ const info = await page.evaluate(() => {
     biome: b?.name, chunks: g.world.chunks.size,
     tris: Math.round(g.renderer.stats.triangles), meshQueue: g.renderer.stats.meshQueue,
     entities: g.world.entities.length, fps: Math.round(g.fps),
+    byType: Object.entries(g.world.entities.reduce((a, e) => {
+      const k = e.renderKind ?? e.type ?? 'other'; a[k] = (a[k] ?? 0) + 1; return a;
+    }, {})).sort((a, b) => b[1] - a[1]).slice(0, 6),
   };
 });
 await page.screenshot({ path: out });
