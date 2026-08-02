@@ -410,7 +410,13 @@ export class Game {
     }
 
     if (this.screens.length > 0) { this.handleScreenInput(); return; }
-    if (this.paused || this.player.dead) return;
+    if (this.player.dead) {
+      // Without the menus module there is no death screen, so any click or
+      // jump respawns — a death must never be a dead end.
+      if (i.mousePressed(0) || i.justPressed('jump')) this.respawnPlayer();
+      return;
+    }
+    if (this.paused) return;
 
     // Look
     if (i.pointerLocked) {
@@ -723,6 +729,20 @@ export class Game {
     const e = this.spawnItem(this.world, p.eyeX + dir.x * 0.5,
       p.eyeY - 0.3, p.eyeZ + dir.z * 0.5, drop);
     if (e) { e.vx = dir.x * 0.3; e.vy = dir.y * 0.3 + 0.1; e.vz = dir.z * 0.3; e.pickupDelay = 40; }
+  }
+
+  /** Put the player back at their spawn point (bed, or the world spawn). */
+  respawnPlayer() {
+    const p = this.player;
+    const s = p.spawnPoint ?? this.world.spawnPos;
+    // Make sure the destination exists and is not buried.
+    this.loader.generateChunkNow(Math.floor(s.x) >> 4, Math.floor(s.z) >> 4);
+    let y = this.world.surfaceAt(Math.floor(s.x), Math.floor(s.z));
+    if (y <= MIN_Y) y = s.y;
+    else y += 1;
+    p.respawn(s.x, y, s.z);
+    this.chat('Respawned');
+    this.input.requestLock();
   }
 
   createBlockEntity(def, x, y, z, state) {
@@ -1367,6 +1387,21 @@ class FallbackHud {
       }
     }
     ctx.textAlign = 'left';
+
+    if (p.dead) {
+      ctx.fillStyle = 'rgba(90,0,0,0.55)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText('You Died!', w / 2, h / 2 - 10);
+      ctx.font = '8px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(p.deathMessage || '', w / 2, h / 2 + 6);
+      ctx.fillText('click or press space to respawn', w / 2, h / 2 + 22);
+      ctx.textAlign = 'left';
+      ctx.restore();
+      return;
+    }
 
     // Recent chat / system messages, fading out after ten seconds.
     const now = this.game.elapsed;
