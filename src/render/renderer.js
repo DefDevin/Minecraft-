@@ -123,6 +123,15 @@ export class Renderer {
   uploadTextures() {
     const gl = this.gl;
     const packed = packLayers();
+    // WebGL2 only guarantees 256 array layers; desktop GPUs give 2048+. Failing
+    // here with a clear message beats a silently black world.
+    const maxLayers = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS);
+    this.maxTextureLayers = maxLayers;
+    if (packed.layers > maxLayers) {
+      throw new Error(
+        `${packed.layers} textures exceed this GPU's limit of ${maxLayers} array ` +
+        `layers. Reduce animated texture frame counts or split the atlas.`);
+    }
     this.atlas = createTextureArray(gl, packed);
     this.atlasLayers = packed.layers;
     this.animations = animationInfo();

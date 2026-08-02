@@ -36,7 +36,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [], warns = [], logs = [];
 page.on('console', (m) => {
   const t = m.text();
-  if (m.type() === 'error') { if (!/404 (Not Found)/.test(t)) errors.push(t); }
+  if (m.type() === 'error') { if (!/404 \(Not Found\)/.test(t)) errors.push(t); }
   else if (m.type() === 'warning') warns.push(t);
   else logs.push(t);
 });
@@ -77,6 +77,7 @@ const status = await page.evaluate(() => {
     biome: g.world.getSurfaceBiomeAt(Math.floor(p.x), Math.floor(p.z)),
     time: g.world.time,
     textures: g.renderer.atlasLayers,
+    maxTextureLayers: g.renderer.maxTextureLayers,
     tickMs: +g.tickTime.toFixed(2),
   };
 });
