@@ -718,6 +718,48 @@ export class Game {
     return this.modules.blockEntity?.createBlockEntity?.(def, x, y, z, state) ?? null;
   }
 
+  // -- Persistence ---------------------------------------------------------
+  //
+  // `game.save` is the SaveManager itself — the streamer calls straight into
+  // it — so the verbs here are `saveGame` / `loadGame`. Both are safe to call
+  // when save.js failed to load: they resolve to false.
+
+  /** Build the save manager once, or null when the module is unavailable. */
+  makeSaveManager() {
+    const SaveManager = this.modules.save?.SaveManager;
+    if (!SaveManager) return null;
+    try {
+      return new SaveManager(this, {
+        id: this.saveId, name: this.saveName, seed: this.world?.seed,
+      });
+    } catch (e) {
+      console.warn('[save] unavailable:', e.message);
+      return null;
+    }
+  }
+
+  /** Persist the world, the player and every changed chunk. */
+  async saveGame() {
+    if (this.save === undefined) this.save = this.makeSaveManager();
+    if (!this.save) return false;
+    const ok = await this.save.save();
+    if (ok) this.chat('Saved');
+    return ok;
+  }
+
+  /** Restore world metadata, the player and their inventory from disk. */
+  async loadGame() {
+    if (this.save === undefined) this.save = this.makeSaveManager();
+    if (!this.save) return false;
+    const ok = await this.save.load();
+    if (ok) {
+      // Everything already streamed in was generated, not loaded — drop it so
+      // the streamer picks the saved copies up on its next pass.
+      this.loader.lastCenter = { cx: Infinity, cz: Infinity };
+    }
+    return ok;
+  }
+
   // -- Dimensions ----------------------------------------------------------
 
   /**

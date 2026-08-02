@@ -1880,6 +1880,164 @@ function registerBuilding() {
   derive('dried_kelp_bottom', 'dried_kelp_top', (px) => px.scale(0.85));
 }
 
+// ---------------------------------------------------------------------------
+// The sixteen dyed families
+// ---------------------------------------------------------------------------
+
+/** Wool: soft fibres, so noise at two scales and no hard edges anywhere. */
+function paintWool(px, rng, base) {
+  noiseFill(px, rng, base, 0.1, 3, 6);
+  px.grain(rng, 0.075);
+  // Tufts: 2x2 clumps a shade lighter or darker, the vanilla wool signature.
+  for (let i = 0; i < 16; i++) {
+    const x = rng.int(S), y = rng.int(S);
+    const c = rng.chance(0.5) ? shade(base, 0.16) : shade(base, -0.16);
+    setw(px, x, y, c);
+    if (rng.chance(0.6)) setw(px, x + 1, y, c);
+    if (rng.chance(0.6)) setw(px, x, y + 1, c);
+  }
+  px.speckle(rng, 12, shade(base, -0.26), 0.4);
+}
+
+/** Concrete: dead flat. Only the faintest grain, or it stops reading as cast. */
+function paintConcrete(px, rng, base) {
+  noiseFill(px, rng, base, 0.028, 2, 4);
+  px.grain(rng, 0.022);
+  px.speckle(rng, 8, shade(base, -0.1), 0.25);
+}
+
+/** Concrete powder: the same pigment, loose and granular. */
+function paintConcretePowder(px, rng, base) {
+  noiseFill(px, rng, base, 0.07, 3, 6);
+  px.grain(rng, 0.085);
+  px.speckle(rng, 22, shade(base, -0.16), 0.45);
+  px.speckle(rng, 16, shade(base, 0.16), 0.4);
+}
+
+/** Terracotta: fired clay, so broad tonal swirls rather than pixel noise. */
+function paintTerracotta(px, rng, base) {
+  noiseFill(px, rng, base, 0.13, 3, 3);
+  noiseOverlay(px, rng, shade(base, -0.2), 0.58, 4, 0.7);
+  noiseOverlay(px, rng, shade(base, 0.16), 0.62, 6, 0.5);
+  px.grain(rng, 0.045);
+  px.speckle(rng, 10, shade(base, -0.3), 0.35);
+}
+
+/** Glazed terracotta: a hard glaze pattern over a pale slip. */
+function paintGlazed(px, rng, base, variant) {
+  const slip = mixHex(base, 0xffffff, 0.5);
+  const ink = shade(base, -0.4);
+  px.fill(slip);
+  px.frame(0, 0, S, S, ink);
+  px.frame(1, 1, 14, 14, base);
+  switch (variant % 4) {
+    case 0:
+      for (let i = 0; i < S; i++) {
+        px.set(i, i, base); setw(px, i, i + 1, base); setw(px, i + 1, i, ink);
+        setw(px, i, i + 8, base);
+      }
+      break;
+    case 1:
+      px.circle(2, 2, 6, base, 255, false);
+      px.circle(13, 13, 6, base, 255, false);
+      px.circle(2, 2, 4, ink, 255, false);
+      px.circle(13, 13, 4, ink, 255, false);
+      break;
+    case 2:
+      px.rect(2, 2, 5, 5, base); px.rect(9, 9, 5, 5, base);
+      px.rect(9, 2, 5, 5, ink); px.rect(2, 9, 5, 5, ink);
+      px.rect(6, 6, 4, 4, mixHex(base, 0xffffff, 0.3));
+      break;
+    default:
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const d = Math.abs(x - 7.5) + Math.abs(y - 7.5);
+          if (d > 4.5 && d < 6.6) px.set(x, y, base);
+          else if (d < 2.6) px.set(x, y, ink);
+        }
+      }
+      break;
+  }
+  px.grain(rng, 0.02);
+}
+
+/** A shulker shell: domed lid over a ridged body. */
+function paintShulker(px, rng, base) {
+  const dark = shade(base, -0.32), light = shade(base, 0.2);
+  px.fill(base);
+  px.rect(0, 0, S, 6, light);           // lid
+  px.hline(0, S - 1, 6, dark);          // seam
+  px.rect(0, 7, S, 9, base);
+  for (const x of [2, 6, 10, 14]) px.vline(x, 7, S - 1, dark);
+  for (const x of [3, 7, 11, 15]) px.vline(x, 7, S - 1, light);
+  px.frame(0, 0, S, S, dark);
+  px.rect(6, 1, 4, 4, dark);            // the little face plate
+  px.rect(7, 2, 2, 2, light);
+  px.grain(rng, 0.04);
+}
+
+/** A bed seen from above: pillow at the head, blanket over a wooden frame. */
+function paintBed(px, rng, base) {
+  px.fill(shade(base, -0.1));
+  px.rect(0, 0, S, 5, 0xe8e8e8);        // pillow
+  px.frame(0, 0, S, 5, 0xc8c8c8);
+  px.rect(0, 5, S, 11, base);
+  px.hline(0, S - 1, 5, shade(base, 0.22));
+  px.hline(0, S - 1, S - 1, shade(base, -0.34));
+  for (const x of [0, S - 1]) px.vline(x, 5, S - 1, shade(base, -0.24));
+  // Quilting.
+  for (let y = 8; y < S; y += 3) {
+    for (let x = 1; x < S - 1; x += 3) px.blend(x, y, shade(base, -0.18), 0.55);
+  }
+  px.grain(rng, 0.04);
+}
+
+/** A candle stub with a wick; the lit form gets a flame and a warm glow. */
+function paintCandle(px, rng, base, lit) {
+  const top = 6;
+  for (let y = top; y < S; y++) {
+    px.set(7, y, shade(base, 0.18));
+    px.set(8, y, base);
+    px.set(9, y, shade(base, -0.22));
+  }
+  px.set(7, top, shade(base, 0.3));
+  px.set(8, top, shade(base, 0.24));
+  px.set(8, top - 1, 0x3a3028);           // wick
+  if (lit) {
+    px.set(8, top - 2, P.misc.torchFlame);
+    px.set(8, top - 3, 0xffd45c);
+    px.set(7, top - 2, 0xff9a2a, 190);
+    px.set(9, top - 2, 0xff9a2a, 190);
+    px.set(8, top - 4, 0xfff2c0, 200);
+    for (let y = top; y < top + 3; y++) px.shadePixel(8, y, 0.2);
+  }
+  px.grain(rng, 0.03);
+}
+
+function registerColored() {
+  DYE_ORDER.forEach((color, i) => {
+    tex(`${color}_wool`, (px, rng) => paintWool(px, rng, P.wool[color]));
+    tex(`${color}_concrete`, (px, rng) => paintConcrete(px, rng, P.concrete[color]));
+    tex(`${color}_concrete_powder`, (px, rng) => paintConcretePowder(px, rng, P.concretePowder[color]));
+    tex(`${color}_terracotta`, (px, rng) => paintTerracotta(px, rng, P.terracotta[color]));
+    tex(`${color}_glazed_terracotta`, (px, rng) => paintGlazed(px, rng, P.glaze[color], i));
+    tex(`${color}_stained_glass`, (px, rng) =>
+      paintGlass(px, rng, P.stainedGlass[color], 118, {
+        edge: shade(P.stainedGlass[color], 0.4), edgeAlpha: 200,
+      }));
+    tex(`${color}_shulker_box`, (px, rng) => paintShulker(px, rng, P.shulker[color]));
+    tex(`${color}_bed`, (px, rng) => paintBed(px, rng, P.wool[color]));
+    tex(`${color}_candle`, (px, rng) => paintCandle(px, rng, P.wool[color], false));
+    tex(`${color}_candle_lit`, (px, rng) => paintCandle(px, rng, P.wool[color], true));
+  });
+
+  // The undyed members of each family.
+  tex('terracotta', (px, rng) => paintTerracotta(px, rng, 0x975d43));
+  tex('shulker_box', (px, rng) => paintShulker(px, rng, 0x9a6f9a));
+  tex('candle', (px, rng) => paintCandle(px, rng, 0xe4dcc0, false));
+  tex('candle_lit', (px, rng) => paintCandle(px, rng, 0xe4dcc0, true));
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;
