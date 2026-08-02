@@ -283,8 +283,9 @@ function writeBlocks(w, section) {
     if (i > 0 && state !== blocks[i - 1]) runs++;
   }
 
+  // Sizes exclude the shared mode byte, so they compare like for like.
   const bits = bitsFor(palette.length);
-  const paletteBytes = 2 + palette.length * 2 + packedByteLength(SECTION_VOLUME, bits);
+  const paletteBytes = 3 + palette.length * 2 + packedByteLength(SECTION_VOLUME, bits);
   const rleBytes = 2 + runs * 4;
   const rawBytes = SECTION_VOLUME * 2;
 

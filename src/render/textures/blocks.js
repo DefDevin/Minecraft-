@@ -993,6 +993,177 @@ function registerStone() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Ores and mineral blocks
+// ---------------------------------------------------------------------------
+
+/** A smooth ingot block: flat metal with a bevelled edge and a soft sheen. */
+function paintMetalBlock(px, rng, base, dark) {
+  noiseFill(px, rng, base, 0.05, 2, 3);
+  px.grain(rng, 0.025);
+  frameBevel(px, 0.14, 0.22);
+  px.frame(1, 1, 14, 14, dark, 90);
+  px.bevel(2, 2, 12, 12, 0.1, 0.12);
+  // Sheen down the top-left diagonal.
+  for (let i = 3; i < 8; i++) px.shadePixel(i, 10 - i, 0.22);
+}
+
+/** A block of cut gems: a lattice of little faceted stones. */
+function paintGemBlock(px, rng, mid, light, dark) {
+  noiseFill(px, rng, dark, 0.1, 2, 3);
+  for (let gy = 0; gy < 2; gy++) {
+    for (let gx = 0; gx < 2; gx++) {
+      const cx = gx * 8 + 4, cy = gy * 8 + 4;
+      for (let y = -3; y <= 3; y++) {
+        for (let x = -3; x <= 3; x++) {
+          if (Math.abs(x) + Math.abs(y) > 3) continue;
+          let c = mid;
+          if (x + y < -1) c = light;
+          else if (x + y > 1) c = shade(dark, 0.15);
+          px.set(cx + x, cy + y, c);
+        }
+      }
+      px.set(cx - 1, cy - 1, 0xffffff);
+    }
+  }
+  px.grain(rng, 0.04);
+}
+
+/** Lumps of raw ore packed together — the raw metal blocks. */
+function paintRawBlock(px, rng, base) {
+  const field = cellField(rng, 7);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const f = field(x + 0.5, y + 0.5);
+      let c = shade(base, (f.cell.tone - 0.5) * 0.3);
+      c = shade(c, clamp(-(f.ox + f.oy) / 7, -0.3, 0.3) * 0.8);
+      if (f.gap < 0.9) c = shade(base, -0.45);
+      px.set(x, y, c);
+    }
+  }
+  px.grain(rng, 0.06);
+  px.speckle(rng, 14, shade(base, 0.3), 0.4);
+}
+
+function registerOres() {
+  const overworld = [
+    ['coal_ore', P.ore.coal, 5],
+    ['iron_ore', P.ore.iron, 6],
+    ['copper_ore', P.ore.copper, 7],
+    ['gold_ore', P.ore.gold, 6],
+    ['redstone_ore', P.ore.redstone, 7],
+    ['lapis_ore', P.ore.lapis, 6],
+    ['diamond_ore', P.ore.diamond, 5],
+    ['emerald_ore', P.ore.emerald, 4],
+  ];
+  for (const [name, mineral, count] of overworld) {
+    ore(name, 'stone', mineral, count);
+    ore(`deepslate_${name}`, 'deepslate', mineral, count);
+  }
+  ore('nether_gold_ore', 'netherrack', P.ore.netherGold, 7, { minR: 1.1, maxR: 1.8 });
+  ore('nether_quartz_ore', 'netherrack', P.ore.quartz, 6, { minR: 1.2, maxR: 2.0 });
+  tex('ancient_debris', (px, rng) => {
+    paintStoneish(px, rng, P.nether.ancientDebris, { amp: 0.18, clusters: 5, freq: 3 });
+    scatterMineral(px, rng, P.ore.debris, 5, 1.6, 2.6);
+    // The netherite scraps show as near-black flecks with a warm rim.
+    for (let i = 0; i < 5; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      px.set(x, y, P.metal.netheriteDark);
+      px.blend(w(x + 1), y, 0x8f6a4a, 0.5);
+    }
+    px.grain(rng, 0.06);
+  });
+
+  tex('coal_block', (px, rng) => {
+    noiseFill(px, rng, P.metal.coal, 0.5, 3, 4);
+    px.grain(rng, 0.06);
+    px.speckle(rng, 24, 0x2e2e2e, 0.6);
+    px.speckle(rng, 10, 0x000000, 0.8);
+  });
+  tex('iron_block', (px, rng) => paintMetalBlock(px, rng, P.metal.iron, P.metal.ironDark));
+  tex('gold_block', (px, rng) => paintMetalBlock(px, rng, P.metal.gold, P.metal.goldDark));
+  tex('netherite_block', (px, rng) => {
+    noiseFill(px, rng, P.metal.netherite, 0.14, 3, 4);
+    px.grain(rng, 0.05);
+    // The speckled "ingot grain" netherite is known for.
+    for (let i = 0; i < 14; i++) {
+      const x = rng.int(S), y = rng.int(S);
+      px.set(x, y, P.metal.netheriteDark);
+      if (rng.chance(0.4)) px.set(w(x + 1), y, 0x5c5257);
+    }
+    frameBevel(px, 0.08, 0.14);
+  });
+  tex('diamond_block', (px, rng) => paintGemBlock(px, rng, P.metal.diamond, 0xc8fffd, P.metal.diamondDark));
+  tex('emerald_block', (px, rng) => paintGemBlock(px, rng, P.metal.emerald, 0x8ff7b4, P.metal.emeraldDark));
+  tex('lapis_block', (px, rng) => {
+    noiseFill(px, rng, P.metal.lapis, 0.22, 3, 4);
+    clusters(px, rng, 6, P.metal.lapisDark, 0.7, 4);
+    clusters(px, rng, 5, 0x6f9cf5, 0.6, 3);
+    px.speckle(rng, 14, 0xd8d8d8, 0.35);
+    px.grain(rng, 0.05);
+  });
+  tex('redstone_block', (px, rng) => {
+    noiseFill(px, rng, P.metal.redstone, 0.22, 3, 5);
+    px.grain(rng, 0.07);
+    px.speckle(rng, 26, 0xf03a2a, 0.5);
+    px.speckle(rng, 16, 0x5c0a0a, 0.6);
+  });
+  tex('raw_iron_block', (px, rng) => paintRawBlock(px, rng, P.metal.rawIron));
+  tex('raw_gold_block', (px, rng) => paintRawBlock(px, rng, P.metal.rawGold));
+  tex('raw_copper_block', (px, rng) => paintRawBlock(px, rng, P.metal.rawCopper));
+
+  // --- copper and its four oxidation stages -------------------------------
+  // Each step keeps the same underlying hammered-plate shape and grows a
+  // greener patina over it, so a half-weathered wall reads as one material.
+  const stages = [
+    ['', P.metal.copper, P.metal.copperCut, 0],
+    ['exposed_', P.metal.exposed, P.metal.exposedCut, 0.3],
+    ['weathered_', P.metal.weathered, P.metal.weatheredCut, 0.62],
+    ['oxidized_', P.metal.oxidized, P.metal.oxidizedCut, 0.9],
+  ];
+  for (const [prefix, block, cut, patina] of stages) {
+    // Vanilla names the fresh stage `copper_block` but the rest `*_copper`.
+    tex(prefix ? `${prefix}copper` : 'copper_block', (px, rng) => {
+      noiseFill(px, rng, block, 0.1, 3, 4);
+      px.grain(rng, 0.05);
+      // Hammered dents.
+      for (let i = 0; i < 9; i++) {
+        const x = rng.int(S), y = rng.int(S);
+        px.blend(x, y, shade(block, -0.22), 0.6);
+        px.blend(w(x + 1), w(y + 1), shade(block, 0.2), 0.4);
+      }
+      if (patina > 0) copperPatina(px, rng, patina);
+    });
+    tex(`${prefix}cut_copper`, (px, rng) => {
+      noiseFill(px, rng, cut, 0.07, 2, 3);
+      const line = shade(cut, -0.3);
+      px.hline(0, S - 1, 7, line);
+      px.hline(0, S - 1, 15, line);
+      px.vline(7, 0, 7, line);
+      px.vline(15, 8, 15, line);
+      for (const [bx, by] of [[0, 0], [8, 0], [0, 8], [8, 8]]) px.bevel(bx, by, 8, 8, 0.16, 0.0);
+      px.grain(rng, 0.035);
+      if (patina > 0) copperPatina(px, rng, patina);
+    });
+  }
+}
+
+/** Green corrosion spreading over copper; `amount` is 0..1 of full coverage. */
+function copperPatina(px, rng, amount) {
+  const n = fbm2(rng, S, 3, 4);
+  const threshold = 1 - amount * 0.95;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const v = n[y * S + x];
+      if (v < threshold - 0.25) continue;
+      const t = clamp((v - (threshold - 0.25)) / 0.35, 0, 1);
+      px.blend(x, y, mixHex(P.metal.patina, 0x86c7a4, rng.next() * 0.5), t * 0.9);
+    }
+  }
+  px.speckle(rng, Math.round(10 * amount), 0x3f7d5f, 0.5);
+  px.grain(rng, 0.04);
+}
+
 // __SECTIONS__
 
 export default registerBlockTextures;

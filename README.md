@@ -95,7 +95,25 @@ and 240 fps.
 uploaded as a texture array. Sounds are synthesised from oscillators and noise
 buffers. The entire game is the source code.
 
-**Graceful degradation.** Content modules load independently; if one is missing
-the game logs it and runs with a reduced feature set rather than failing to
-start. `scripts/smoke.mjs` boots the game in headless Chromium and reports
-frame rate, chunk counts and any console errors.
+**Graceful degradation.** Content modules load independently. If one is missing,
+or throws while registering, the game logs it once and runs with a reduced
+feature set rather than failing to start — and a subsystem that throws during a
+tick is disabled instead of failing twenty times a second.
+
+## Verification
+
+Everything here runs offline; the browser tests drive a real headless Chromium.
+
+```
+node scripts/smoke.mjs        # boot the game, screenshot it, report fps/chunks/errors
+node scripts/playtest.mjs     # drive the player through real gameplay and assert
+node scripts/audit.mjs        # cross-check registries: missing textures, bad tools,
+                              #   blocks with no model, unregistered drop items
+node scripts/bench-mesher.mjs # time chunk meshing on synthetic terrain
+node scripts/check-*.mjs      # per-subsystem unit tests
+```
+
+`playtest.mjs` is the acceptance suite: it walks, jumps, lands, breaks and places
+blocks, checks that skylight reaches the surface and that caves are dark, spawns
+and ticks mobs, runs power down a redstone line, emits particles, round-trips a
+chunk through serialisation, and asserts the world actually changed each time.
