@@ -885,6 +885,9 @@ export class Game {
 const EYE_SCRATCH = {};
 const TEST_BOX = new AABB();
 
+/** The four cardinal chunk offsets, used for border relighting and remeshing. */
+const NEIGHBOR_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
 // ---------------------------------------------------------------------------
 // Chunk streaming
 //
@@ -993,6 +996,13 @@ class ChunkStreamer {
       }
       case CHUNK_STATE.DECORATED:
         world.light.initialiseChunkLight(chunk);
+        // The neighbours' flood fills already drained, so light that should
+        // spill into this chunk (a torch by the border, skylight under an
+        // overhang) needs its seeds re-queued from their facing edges.
+        for (const [dx, dz] of NEIGHBOR_DIRS) {
+          const n = world.getChunk(chunk.cx + dx, chunk.cz + dz);
+          if (n && n.status >= CHUNK_STATE.LIT) world.light.relightBorder(n, -dx, -dz);
+        }
         chunk.status = CHUNK_STATE.LIT;
         this.stats.lit++;
         return true;
@@ -1031,6 +1041,16 @@ class ChunkStreamer {
     chunk.recomputeHeightmaps();
     chunk.status = CHUNK_STATE.DECORATED;
     this.stats.decorated++;
+    // Trees and structures routinely spill across borders. Any neighbour that
+    // is already meshed has to be rebuilt, and its heightmaps recomputed.
+    for (const [dx, dz] of NEIGHBOR_DIRS) {
+      const n = this.world.getChunk(chunk.cx + dx, chunk.cz + dz);
+      if (!n || n.status < CHUNK_STATE.READY) continue;
+      n.recomputeHeightmaps();
+      for (let sy = 0; sy < SECTION_COUNT; sy++) {
+        if (n.sections[sy] && !n.sections[sy].empty) this.game.renderer.queueMesh(n, sy);
+      }
+    }
   }
 
   mesh(chunk) {
