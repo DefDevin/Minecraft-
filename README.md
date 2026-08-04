@@ -28,6 +28,24 @@ No build step, no `npm install`. The browser loads the ES modules directly.
 | `F` | pick block · `F5` cycle perspective |
 | `F3` | debug overlay · `F11` fullscreen · `Esc` pause |
 
+## On a phone or tablet
+
+Touch is detected automatically: the game skips pointer lock, drops the render
+distance and resolution to something a phone can push, and draws a control layer.
+
+| | |
+|---|---|
+| Left half | drag anywhere for a virtual stick — push it to the edge to sprint |
+| Right half | drag to look · **tap** to place/use · **hold** to mine |
+| ▲ ▼ | jump · sneak (sneak toggles) |
+| ⛏ | toggle continuous mining |
+| ‹ › | previous / next hotbar slot |
+| ☰ ⇅ ✈ | inventory · perspective · fly (creative) |
+
+Your phone needs to reach the server, so start it on a computer on the same
+network and browse to that machine's LAN address — `http://192.168.x.x:8080`,
+not `localhost`. `scripts/serve.mjs` already listens on every interface.
+
 ## What is in it
 
 **World.** Infinite terrain from a Minecraft 1.18-style noise stack:

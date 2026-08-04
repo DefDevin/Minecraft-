@@ -14,6 +14,7 @@ import { T, blockOf, blocksByName, getProp, withProp, TOOL } from '../world/bloc
 import { Renderer } from '../render/renderer.js';
 import { Environment } from '../render/environment.js';
 import { Input } from '../core/input.js';
+import { TouchControls, isTouchDevice } from '../core/touch.js';
 import { Player, GAMEMODE } from '../entity/player.js';
 import { ItemStack, getItem, itemsByName, canHarvest, isCorrectTool } from './items.js';
 import { Random, parseSeed } from '../core/rng.js';
@@ -46,6 +47,17 @@ export class Game {
       renderScale: 1,
       ...(opts.settings || {}),
     };
+
+    // A phone cannot push a desktop render distance, and its screen is small
+    // enough that a lower internal resolution is not noticeable.
+    this.touchMode = opts.touchMode ?? isTouchDevice();
+    if (this.touchMode) {
+      this.settings.renderDistance = Math.min(this.settings.renderDistance, 5);
+      this.settings.simulationDistance = 4;
+      this.settings.renderScale = 0.75;
+      this.settings.fov = 75;
+      this.settings.particles = 1;
+    }
 
     this.renderer = new Renderer(this.canvas, {
       fov: this.settings.fov,
@@ -228,14 +240,23 @@ export class Game {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.input.on('lockChange', (locked) => {
+      if (this.touchMode) return;
       if (!locked && this.screens.length === 0 && !this.paused) this.openPause();
     });
-    this.canvas.addEventListener('mousedown', () => {
-      if (this.screens.length === 0 && !this.input.pointerLocked) {
-        this.input.requestLock();
-        this.sound?.resume?.();
-      }
-    });
+    if (this.touchMode) {
+      this.touch = new TouchControls(document.body, this.input);
+      this.touch.show();
+      // Audio needs a gesture to start; any first touch will do.
+      const resume = () => { this.sound?.resume?.(); };
+      document.body.addEventListener('pointerdown', resume, { once: true });
+    } else {
+      this.canvas.addEventListener('mousedown', () => {
+        if (this.screens.length === 0 && !this.input.pointerLocked) {
+          this.input.requestLock();
+          this.sound?.resume?.();
+        }
+      });
+    }
     requestAnimationFrame(this.frame);
   }
 
@@ -296,6 +317,7 @@ export class Game {
     const alpha = clamp(this.accumulator / TICK_MS, 0, 1);
     this.render(alpha, dt);
     this.input.endFrame();
+    this.touch?.endFrame();
     this.frameCount++;
   };
 
@@ -384,12 +406,17 @@ export class Game {
     if (this.screens.length > 0 || this.paused || this.player.dead) {
       return { forward: 0, strafe: 0, jump: false, sneak: false, sprint: false };
     }
+    const stick = this.touch?.enabled ? this.touch.axes() : null;
     return {
-      forward: (i.down('forward') ? 1 : 0) - (i.down('back') ? 1 : 0),
-      strafe: (i.down('right') ? 1 : 0) - (i.down('left') ? 1 : 0),
+      forward: (i.down('forward') ? 1 : 0) - (i.down('back') ? 1 : 0) +
+        (stick ? stick.forward : 0),
+      strafe: (i.down('right') ? 1 : 0) - (i.down('left') ? 1 : 0) +
+        (stick ? stick.strafe : 0),
       jump: i.down('jump'),
       sneak: i.down('sneak'),
-      sprint: i.down('sprint') || i.sprintLatched,
+      // Pushing the stick to its edge sprints, the way a gamepad would.
+      sprint: i.down('sprint') || i.sprintLatched ||
+        (stick ? Math.hypot(stick.forward, stick.strafe) > 0.92 : false),
     };
   }
 
@@ -418,8 +445,8 @@ export class Game {
     }
     if (this.paused) return;
 
-    // Look
-    if (i.pointerLocked) {
+    // Look — pointer lock on desktop, drag accumulation on touch.
+    if (i.pointerLocked || this.touchMode) {
       const look = i.takeLook();
       this.player.applyLook(look.yaw, look.pitch);
     }
